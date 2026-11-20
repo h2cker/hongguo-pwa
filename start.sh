@@ -106,7 +106,7 @@ else
 fi
 echo "   电脑本地访问: http://127.0.0.1:9588"
 if [ -n "$LAN_IP" ]; then
-  echo "   iPhone / 局域网访问: http://${LAN_IP}:9588"
+  echo "   手机/平板局域网访问: http://${LAN_IP}:9588"
 fi
 echo ""
-echo "📱 iPhone 推荐操作: 用 Safari 打开上方局域网地址 -> 点底部分享图标 ->「添加到主屏幕」，即可全屏 App 追剧！"
+echo "📱 支持 iOS / Android / 电脑浏览器直接观看（iPhone 用 Safari 分享 ->「添加到主屏幕」可全屏 App 体验）！"

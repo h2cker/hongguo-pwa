@@ -1,20 +1,20 @@
-# 红果短剧 iOS PWA (`hongguo-ios-pwa`)
+# 红果短剧 Web / PWA (`hongguo-pwa`)
 
-专为 **iPhone / iPad Safari & PWA** 打造的**红果短剧**局域网自建竖屏播放器（无广告、免登录、支持 Docker 开箱即用一键部署）。在家里电脑或 NAS 上启动后，手机连接同一 Wi-Fi 即可流畅追剧。
+支持 **iOS / Android / Windows / macOS 全平台浏览器与 PWA** 的**红果短剧**局域网自建竖屏播放器（无广告、免登录、支持 Docker 一键部署）。在家里电脑或 NAS 上启动后，手机、平板、电脑连同一 Wi-Fi 即可直接刷剧，并对 **iPhone Safari / AVPlayer** 做了深度兼容优化。
 
-> **检索关键词**：红果短剧、红果短剧 iOS、红果短剧 iPhone 版、红果短剧网页版 / Safari PWA、红果短剧 NAS 自建、红果短剧 Docker 一键部署、无广告竖屏短剧播放器、`hongguo-shortdrama`、`hongguo ios`、`short drama pwa`、`self-hosted short drama`、`http 206 range proxy`、`ffmpeg faststart decrypt`。
+> **检索关键词**：红果短剧、红果短剧网页版、红果短剧 PWA、红果短剧 iOS / iPhone 版、红果短剧安卓版、红果短剧 NAS 自建、红果短剧 Docker 一键部署、无广告竖屏短剧播放器、`hongguo-shortdrama`、`hongguo pwa`、`short drama pwa`、`self-hosted short drama`、`http 206 range proxy`、`ffmpeg faststart decrypt`。
 
 ---
 
 ## ✨ 核心优势对比
 
-| 痛点对比 | 常规自建 / 网页方案 | 本项目 (`hongguo-ios-pwa`) |
+| 痛点对比 | 常规自建 / 网页方案 | 本项目 (`hongguo-pwa`) |
 | :--- | :--- | :--- |
+| **多端兼容性** | 只适配单一平台，iPhone 经常加密流/`bytevc2` 黑屏 | **全平台通吃 + 深度适配 iOS**：iOS / Android / PC 浏览器开箱即看；服务端自动过滤 `bytevc2/h266`，`ffmpeg` 解密 + `+faststart` 重封装，原生支持 `HTTP 206` 任意拖拽 |
 | **切集/切剧延迟** | 播完才开始请求下一集，转圈等待 5~10 秒 | **双级预热 + 内存直切**：起播 2 秒即在后台提前解密下一集并预载入内存，连播近乎零延迟无缝切换（超大文件自动回退服务端 `206` 流式秒播） |
 | **通道稳定性** | 单一接口异常或限流即报错黑屏 | **双路主备自动容灾**：无锁并发 `V5` 签名主通道 + `ShortDramaCat` 自动备用兜底 + 前端 `502`/超时自动降级重试 |
-| **iOS 兼容性** | 常见加密流/`bytevc2` 黑屏、进度条无法拖动 | **专治 iOS Safari / AVPlayer**：服务端自动过滤 `bytevc2/h266`，`ffmpeg` 解密 + `+faststart` 重封装，原生支持 `HTTP 206` 任意拖拽 |
 | **接口响应速度** | 每次点剧、搜索都重新请求上游 | **全链路多级缓存**：详情/搜索/榜单/分类 5 分钟服务端缓存（NAS 局域网实测命中 **~30ms**），120 集本地媒体缓存回看秒出 |
-| **刷剧体验** | 每次刷新推荐重复度高，交互生硬 | **原生 App 级竖屏交互**：随机推荐防重复、上下滑换剧/切集、长按 2x 倍速、锁屏防误触、Safari 添加主屏幕全屏播放 |
+| **刷剧体验** | 每次刷新推荐重复度高，交互生硬 | **原生 App 级竖屏交互**：随机推荐防重复、上下滑换剧/切集、长按 2x 倍速、锁屏防误触、手机安装 PWA 全屏播放 |
 
 ---
 
@@ -25,10 +25,10 @@
 ### 方式 A：Mac / Linux / NAS（复制下面一整行，粘贴回车即可）
 
 ```bash
-git clone https://github.com/h2cker/hongguo-ios-pwa.git && cd hongguo-ios-pwa && bash start.sh
+git clone https://github.com/h2cker/hongguo-pwa.git && cd hongguo-pwa && bash start.sh
 ```
 
-> 脚本会自动完成：识别宿主机 CPU 架构（`x86_64` / `arm64` 均支持）-> 自动拉取上游运行组件（内置国内镜像兜底）-> 构建启动容器 -> 校验首页就绪 -> 输出手机局域网访问地址。
+> 脚本会自动完成：识别宿主机 CPU 架构（`x86_64` / `arm64` 均支持）-> 自动拉取上游运行组件（内置国内镜像兜底）-> 构建启动容器 -> 校验首页就绪 -> 输出手机/电脑访问地址。
 
 ### 方式 B：Windows 电脑（双击运行）
 
@@ -36,10 +36,11 @@ git clone https://github.com/h2cker/hongguo-ios-pwa.git && cd hongguo-ios-pwa &&
 2. 确保 **Docker Desktop** 已启动运行。
 3. **直接双击文件夹中的 `start.bat`**，等待片刻即可自动打开播放页。
 
-### 手机如何观看？
-1. 脚本运行完成后会在终端打印 **局域网地址**（例如 `http://192.168.1.100:9588`）。
-2. 确保 iPhone 与电脑/NAS 处于**同一局域网（Wi-Fi）**，使用 **iPhone Safari** 打开该地址。
-3. 点击底部分享按钮 -> **「添加到主屏幕」**，即可获得独立全屏 App 观影体验。
+### 各设备如何观看？
+脚本运行完成后会在终端打印 **局域网地址**（例如 `http://192.168.1.100:9588`），确保设备处于同一 Wi-Fi：
+- **iPhone / iPad**：用 **Safari** 打开局域网地址 -> 点底部分享按钮 -> **「添加到主屏幕」**，即可全屏 App 观看。
+- **Android 手机 / 平板**：用 **Chrome / Edge / 自带浏览器** 打开局域网地址，可直接播放或安装为桌面 PWA 应用。
+- **Windows / Mac 电脑**：浏览器直接访问 `http://127.0.0.1:9588` 即可观看，支持横竖屏自适应与键盘/滚轮操作。
 
 ---
 

@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Project: **hongguo-ios-pwa** (红果短剧 iOS Safari / PWA 局域网自建竖屏播放器)
-Keywords: `红果短剧`, `hongguo`, `short-drama`, `ios-pwa`, `safari`, `self-hosted`, `docker-compose`, `ffmpeg`, `http-206`
+Project: **hongguo-pwa** (红果短剧全平台 Web / PWA 局域网自建竖屏播放器，支持 iOS / Android / Desktop)
+Keywords: `红果短剧`, `hongguo`, `short-drama`, `pwa`, `ios`, `android`, `self-hosted`, `docker-compose`, `ffmpeg`, `http-206`
 
 ## Quick Deploy Workflow for AI Agents
 
