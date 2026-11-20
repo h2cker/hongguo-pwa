@@ -1,0 +1,33 @@
+services:
+  shortdramacat:
+    build: .
+    image: local/shortdramacat:latest
+    container_name: shortdramacat
+    restart: unless-stopped
+    ports:
+      - "9587:9587"
+    volumes:
+      - ./data:/data
+
+  v5-proxy:
+    build: ./v5-proxy
+    image: local/shortdramacat-v5:latest
+    container_name: shortdramacat-v5
+    restart: unless-stopped
+    depends_on:
+      - shortdramacat
+
+  ios-web:
+    image: nginx:1.28-alpine
+    container_name: shortdramacat-ios
+    restart: unless-stopped
+    depends_on:
+      - shortdramacat
+      - v5-proxy
+    ports:
+      - "9588:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./manifest.json:/usr/share/nginx/html/manifest.json:ro
+      - ./sw.js:/usr/share/nginx/html/sw.js:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro

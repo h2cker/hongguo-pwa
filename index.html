@@ -1,0 +1,2327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="红果短剧" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23fe2c55'/><path d='M38 30l34 20-34 20z' fill='white'/></svg>" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23fe2c55'/><path d='M38 30l34 20-34 20z' fill='white'/></svg>" />
+  <title>红果短剧</title>
+  <style>
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --accent: #fe2c55;
+      --accent-soft: rgba(254, 44, 85, 0.18);
+      --glass: rgba(18, 18, 24, 0.52);
+      --glass-border: rgba(255, 255, 255, 0.14);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100lvh; min-height: -webkit-fill-available; overflow: hidden;
+      background: #000; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Stage */
+    #stage {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: var(--app-h, 100%); background: #000;
+      overflow: hidden; touch-action: pan-x;
+    }
+    #player {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000;
+    }
+
+    /* Poster & Big Play */
+    #posterOverlay {
+      position: absolute; inset: 0; background-size: cover; background-position: center;
+      display: none; align-items: center; justify-content: center;
+      background-color: rgba(0,0,0,0.45); z-index: 5;
+    }
+    #posterOverlay::before {
+      content: ""; position: absolute; inset: 0;
+      background: radial-gradient(circle, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.65) 100%);
+    }
+    #posterOverlay.show { display: flex; }
+    #posterOverlay.show ~ #centerControl { display: none; }
+    .play-big {
+      position: relative; z-index: 2; width: 74px; height: 74px; border-radius: 50%;
+      background: linear-gradient(135deg, #ff3b63, #e01b45); border: 2px solid rgba(255,255,255,0.25);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 12px 32px rgba(254, 44, 85, 0.45); cursor: pointer;
+      transition: transform 0.15s ease;
+    }
+    .play-big:active { transform: scale(0.92); }
+    .play-big svg { width: 32px; height: 32px; margin-left: 4px; fill: currentColor; }
+
+    /* Center Play/Pause overlay (visible when UI is shown or paused) */
+    #centerControl {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 13; width: 64px; height: 64px; border-radius: 50%;
+      background: rgba(0,0,0,0.48); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.18); color: #fff;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      transition: opacity 0.25s, transform 0.15s;
+    }
+    #centerControl:active { transform: translate(-50%, -50%) scale(0.9); }
+    #stage.clean #centerControl { opacity: 0; pointer-events: none; }
+
+    /* Swipe-seek HUD */
+    #seekHud {
+      position: absolute; top: 28%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 20; padding: 10px 18px; border-radius: 14px;
+      background: rgba(15,15,20,0.78); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.14); color: #fff;
+      font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+      pointer-events: none; opacity: 0; transition: opacity 0.15s;
+    }
+    #seekHud.show { opacity: 1; }
+    #seekHud.show ~ #centerControl { opacity: 0 !important; pointer-events: none !important; }
+
+    /* Subtle up-next reminder near end of episode */
+    #nextHint {
+      position: absolute; top: calc(64px + var(--safe-top)); right: calc(14px + var(--safe-right));
+      z-index: 14; padding: 7px 13px; border-radius: 999px;
+      background: rgba(15,15,20,0.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.92);
+      font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      opacity: 0; transform: translateY(-6px); pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    #nextHint.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    #nextHint .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    #loadingCover {
+      position: absolute; inset: 0; z-index: 3; pointer-events: none;
+      background-size: cover; background-position: center; background-color: #0b0b0e;
+      filter: blur(24px) brightness(0.52) saturate(1.15); transform: scale(1.1);
+      opacity: 0; transition: opacity 0.28s ease;
+    }
+    #loadingCover.show { opacity: 1; }
+    #topLoader {
+      position: absolute; top: 0; left: 0; right: 0; height: 2.5px; z-index: 25;
+      pointer-events: none; opacity: 0; transition: opacity 0.2s ease; overflow: hidden;
+      background: rgba(255,255,255,0.08);
+    }
+    #topLoader.show { opacity: 1; }
+    #topLoader::after {
+      content: ""; position: absolute; top: 0; bottom: 0; left: -45%; width: 45%;
+      background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent);
+      animation: topSweep 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    @keyframes topSweep { 0% { left: -45%; } 100% { left: 100%; } }
+    #spinner {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.96);
+      display: inline-flex; align-items: center; gap: 9px;
+      padding: 9px 16px; border-radius: 999px;
+      background: rgba(18, 18, 22, 0.72);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+      color: rgba(255,255,255,0.92); font-size: 13px; font-weight: 500; letter-spacing: 0.2px;
+      white-space: nowrap; z-index: 6; pointer-events: none;
+      opacity: 0; transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+    #spinner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    #spinner.show ~ #centerControl { opacity: 0 !important; pointer-events: none !important; }
+    #posterOverlay.show ~ #spinner { opacity: 0 !important; }
+    #spinner .spin-ring {
+      width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+      border: 2.2px solid rgba(255,255,255,0.2); border-top-color: var(--accent);
+      animation: spin 0.72s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Ambient Gradients */
+    .grad-top {
+      position: absolute; top: 0; left: 0; right: 0; height: calc(96px + var(--safe-top));
+      background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 60%, transparent 100%);
+      pointer-events: none; z-index: 8; transition: opacity 0.25s;
+    }
+    .grad-bottom {
+      position: absolute; bottom: 0; left: 0; right: 0; height: calc(250px + var(--safe-bottom));
+      background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.45) 52%, transparent 100%);
+      pointer-events: none; z-index: 8; transition: opacity 0.25s;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      position: absolute; top: calc(10px + var(--safe-top)); left: calc(14px + var(--safe-left)); right: calc(14px + var(--safe-right));
+      display: flex; align-items: center; justify-content: space-between; z-index: 12;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    .tabs { display: flex; gap: 12px; align-items: center; }
+    .tab-btn {
+      background: none; border: none; color: rgba(255,255,255,0.65);
+      font-size: 15px; font-weight: 500; padding: 6px 2px 8px; position: relative; cursor: pointer;
+      transition: color 0.2s; white-space: nowrap;
+    }
+    .tab-btn.active { color: #fff; font-weight: 700; font-size: 16px; }
+    .tab-btn.active::after {
+      content: ""; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 18px; height: 3px; border-radius: 2px; background: var(--accent);
+      box-shadow: 0 0 8px rgba(254,44,85,0.7);
+    }
+    .top-actions { display: flex; gap: 6px; align-items: center; }
+    .icon-pill {
+      height: 32px; padding: 0 8px; border-radius: 16px;
+      background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border); color: #fff;
+      display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; cursor: pointer;
+      transition: transform 0.12s, background 0.15s; white-space: nowrap;
+    }
+    .icon-pill:active { transform: scale(0.94); background: rgba(255,255,255,0.2); }
+    .icon-pill svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+    /* Right Action Bar */
+    .right-bar {
+      position: absolute; right: calc(12px + var(--safe-right)); bottom: calc(48px + var(--safe-bottom));
+      display: flex; flex-direction: column; gap: 10px; align-items: center; z-index: 12;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+    .act-btn {
+      background: none; border: none; color: #fff; padding: 0;
+      display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+      transition: transform 0.12s;
+    }
+    .act-btn:active { transform: scale(0.88); }
+    .act-circle {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    }
+    .act-circle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    #btnLock .act-circle { border-color: rgba(254, 44, 85, 0.42); background: rgba(254, 44, 85, 0.14); }
+    .act-btn.liked .act-circle {
+      background: rgba(254,44,85,0.22); border-color: rgba(254,44,85,0.6); color: var(--accent);
+    }
+    .act-btn.liked .act-circle svg { fill: var(--accent); stroke: var(--accent); }
+    .act-label {
+      font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.9);
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+    }
+
+    /* Bottom Info & Quick Pills */
+    .bottom-info {
+      position: absolute; left: calc(14px + var(--safe-left)); right: calc(70px + var(--safe-right)); bottom: calc(40px + var(--safe-bottom));
+      z-index: 12; transition: opacity 0.25s, transform 0.25s;
+    }
+    .series-title {
+      font-size: 17px; font-weight: 700; line-height: 1.3; margin-bottom: 6px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.85);
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .ep-badge {
+      font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+      background: linear-gradient(135deg, #ff3b63, #e01b45); color: #fff; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 3px;
+      box-shadow: 0 2px 8px rgba(254,44,85,0.4);
+    }
+    .series-intro {
+      font-size: 13px; line-height: 1.45; color: rgba(255,255,255,0.78);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.85); margin-bottom: 8px;
+    }
+    .series-intro.expanded { -webkit-line-clamp: unset; }
+    .quick-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .q-pill {
+      height: 26px; padding: 0 10px; border-radius: 13px;
+      background: rgba(255,255,255,0.12); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.92);
+      font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+    }
+    .q-pill:active { background: rgba(255,255,255,0.22); }
+
+    /* Clean mode & Screen Lock (anti-accidental-touch) */
+    #stage.clean .top-bar,
+    #stage.clean .right-bar,
+    #stage.clean .bottom-info,
+    #stage.clean .grad-top,
+    #stage.clean .grad-bottom,
+    #stage.clean .progress-wrap,
+    #stage.locked .top-bar,
+    #stage.locked .right-bar,
+    #stage.locked .bottom-info,
+    #stage.locked .grad-top,
+    #stage.locked .grad-bottom,
+    #stage.locked .progress-wrap { opacity: 0; pointer-events: none; }
+    #stage.locked { touch-action: none; }
+    #stage.locked #centerControl,
+    #stage.locked #nextHint { opacity: 0 !important; pointer-events: none !important; }
+    #unlockBtn {
+      position: absolute; left: calc(16px + var(--safe-left)); top: 50%; transform: translateY(-50%) scale(0.95);
+      z-index: 30; display: none; align-items: center; gap: 7px;
+      padding: 10px 14px; border-radius: 999px;
+      background: rgba(18, 18, 24, 0.76); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+      opacity: 0; transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none;
+    }
+    #stage.locked #unlockBtn { display: inline-flex; }
+    #stage.locked #unlockBtn.show { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
+    #unlockBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Progress Bar */
+    .progress-wrap {
+      position: absolute; left: calc(14px + var(--safe-left)); right: calc(14px + var(--safe-right)); bottom: calc(10px + var(--safe-bottom));
+      z-index: 14; display: flex; align-items: center; gap: 10px; height: 24px;
+      transition: opacity 0.25s;
+    }
+    .time-txt {
+      font-size: 11px; color: rgba(255,255,255,0.8); min-width: 34px;
+      font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    }
+    input[type="range"].seek {
+      -webkit-appearance: none; appearance: none; flex: 1; height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.24); outline: none; transition: height 0.15s;
+    }
+    input[type="range"].seek:active { height: 6px; }
+    input[type="range"].seek::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,0.6);
+    }
+
+    /* Bottom Sheets */
+    .sheet-mask {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.58); z-index: 30;
+      display: flex; align-items: flex-end; opacity: 0; pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .sheet-mask.open { opacity: 1; pointer-events: auto; }
+    .sheet {
+      width: 100%; max-height: 78dvh; background: #15151c;
+      border-top-left-radius: 20px; border-top-right-radius: 20px;
+      padding: 8px 16px calc(18px + var(--safe-bottom));
+      display: flex; flex-direction: column; gap: 12px;
+      box-shadow: 0 -10px 40px rgba(0,0,0,0.7);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      transform: translateY(100%); transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .sheet-mask.open .sheet { transform: translateY(0); }
+    .sheet-grabber {
+      width: 36px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.22);
+      margin: 2px auto 4px; flex-shrink: 0;
+    }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .sheet-title { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+    .sheet-close {
+      background: rgba(255,255,255,0.1); border: none; color: #fff; flex-shrink: 0;
+      width: 30px; height: 30px; border-radius: 50%; font-size: 15px; cursor: pointer;
+    }
+    .sheet-body { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+
+    /* Episode Grid */
+    .ep-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; }
+    .ep-ranges { display: flex; gap: 6px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+    .ep-ranges::-webkit-scrollbar { display: none; }
+    .ep-range-btn {
+      padding: 6px 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75);
+      font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    }
+    .ep-range-btn.active { background: var(--accent-soft); border-color: var(--accent); color: #fff; font-weight: 700; }
+    .ep-sort-btn {
+      padding: 6px 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08); color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    }
+    .ep-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding-bottom: 8px; }
+    .ep-item {
+      height: 42px; border-radius: 10px; background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.06); color: #fff; font-size: 14px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .ep-item.active {
+      background: linear-gradient(135deg, #ff3b63, #e01b45); border-color: transparent;
+      box-shadow: 0 4px 12px rgba(254,44,85,0.35);
+    }
+
+    /* Search & Library Cards */
+    .search-box { display: flex; gap: 8px; }
+    .search-input {
+      flex: 1; height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.07); color: #fff; padding: 0 14px; font-size: 15px; outline: none;
+    }
+    .search-go {
+      height: 42px; padding: 0 18px; border-radius: 12px; border: none;
+      background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .lib-tabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; padding: 2px 0; }
+    .lib-tabs::-webkit-scrollbar { display: none; }
+    .lib-tabs:empty { display: none; }
+    .lib-tab {
+      padding: 6px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75); font-size: 13px; white-space: nowrap; cursor: pointer; flex-shrink: 0;
+    }
+    .lib-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .suggest-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+    .suggest-item {
+      padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,0.05);
+      font-size: 14px; color: rgba(255,255,255,0.9); cursor: pointer;
+    }
+    .suggest-item:active { background: rgba(255,255,255,0.12); }
+    .load-more-btn {
+      width: 100%; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); font-size: 13px;
+      margin-top: 6px; cursor: pointer;
+    }
+
+    .drama-list { display: flex; flex-direction: column; gap: 10px; }
+    .drama-card {
+      display: flex; gap: 12px; padding: 10px; border-radius: 14px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer; align-items: center; transition: background 0.15s;
+    }
+    .drama-card:active { background: rgba(255,255,255,0.1); }
+    .drama-cover {
+      width: 62px; height: 84px; border-radius: 10px; object-fit: cover;
+      background: #23232e; flex-shrink: 0;
+    }
+    .drama-meta { flex: 1; min-width: 0; }
+    .drama-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .drama-sub { font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 5px; }
+    .drama-desc { font-size: 12px; line-height: 1.4; color: rgba(255,255,255,0.48); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* Toast */
+    #toast {
+      position: fixed; top: calc(64px + var(--safe-top)); left: 50%; transform: translateX(-50%);
+      background: rgba(20,20,28,0.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      color: #fff; padding: 8px 18px; border-radius: 20px;
+      font-size: 13px; font-weight: 500; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    }
+    #toast.show { opacity: 1; }
+
+    /* Auth Lock Screen */
+    #authMask {
+      position: fixed; inset: 0; z-index: 60;
+      background: radial-gradient(circle at top, #1f1420 0%, #0a0a0e 65%);
+      display: none; align-items: center; justify-content: center; padding: 24px;
+    }
+    #authMask.open { display: flex; }
+    .auth-card {
+      width: 100%; max-width: 320px; background: rgba(24,24,32,0.92); backdrop-filter: blur(16px);
+      border-radius: 22px; padding: 28px 22px; border: 1px solid rgba(255,255,255,0.1);
+      display: flex; flex-direction: column; gap: 14px; text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.65);
+    }
+    .auth-logo {
+      width: 52px; height: 52px; border-radius: 15px; margin: 0 auto 2px;
+      background: linear-gradient(135deg, #ff3b63, #e01b45);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 20px rgba(254,44,85,0.35);
+    }
+    .auth-title { font-size: 19px; font-weight: 700; }
+    .auth-sub { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: -6px; }
+    .auth-input {
+      height: 46px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07); color: #fff; padding: 0 14px;
+      font-size: 16px; text-align: center; outline: none;
+    }
+    .auth-input:focus { border-color: var(--accent); }
+    .auth-btn {
+      height: 46px; border-radius: 12px; border: none;
+      background: linear-gradient(135deg, #ff3b63, #e01b45);
+      color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+    }
+    .auth-err { font-size: 12px; color: #ff6b81; min-height: 16px; }
+
+    /* Landscape & short-viewport layout */
+    @media (orientation: landscape), (max-height: 540px) {
+      .right-bar {
+        display: grid; grid-template-columns: repeat(2, 42px);
+        gap: 8px 10px; bottom: calc(42px + var(--safe-bottom)); right: calc(14px + var(--safe-right));
+      }
+      .act-circle { width: 36px; height: 36px; }
+      .act-circle svg { width: 18px; height: 18px; }
+      .act-label { font-size: 10px; }
+      .bottom-info { right: calc(114px + var(--safe-right)); bottom: calc(36px + var(--safe-bottom)); }
+      .series-intro:not(.expanded) { -webkit-line-clamp: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <video id="player" playsinline webkit-playsinline autopictureinpicture preload="auto"></video>
+    <div id="loadingCover"></div>
+    <div id="topLoader"></div>
+    <div id="posterOverlay">
+      <button class="play-big" id="bigPlayBtn" aria-label="播放">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+    </div>
+    <div id="spinner" aria-live="polite"><span class="spin-ring"></span><span id="loadingText">正在缓冲...</span></div>
+    <div id="seekHud">00:00 / 00:00</div>
+    <button id="nextHint" type="button" aria-label="即将播放下一集"><span class="dot"></span><span id="nextHintText">即将播放下一集</span></button>
+    <button id="centerControl" aria-label="播放/暂停">
+      <svg id="centerIcon" width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+
+    <div class="grad-top"></div>
+    <div class="grad-bottom"></div>
+
+    <div class="top-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="16">推荐</button>
+        <button class="tab-btn" data-tab="39">真人剧</button>
+        <button class="tab-btn" data-tab="36">漫剧</button>
+      </div>
+      <div class="top-actions">
+        <button class="icon-pill" id="btnRank">
+          <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          榜单
+        </button>
+        <button class="icon-pill" id="btnLibrary">
+          <svg viewBox="0 0 24 24"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+          追剧
+        </button>
+        <button class="icon-pill" id="btnSearch">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          搜索
+        </button>
+      </div>
+    </div>
+
+    <div class="right-bar">
+      <button class="act-btn" id="btnFav">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        </div>
+        <span class="act-label">收藏</span>
+      </button>
+      <button class="act-btn" id="btnEpisodes">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </div>
+        <span class="act-label" id="epCircle">选集</span>
+      </button>
+      <button class="act-btn" id="btnNextEp">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4z"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+        </div>
+        <span class="act-label">下一集</span>
+      </button>
+      <button class="act-btn" id="btnPiP">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <span class="act-label">小窗</span>
+      </button>
+      <button class="act-btn" id="btnFull">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </div>
+        <span class="act-label">全屏</span>
+      </button>
+      <button class="act-btn" id="btnLock">
+        <div class="act-circle">
+          <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <span class="act-label">锁屏</span>
+      </button>
+    </div>
+
+    <button id="unlockBtn" type="button" aria-label="点击解锁">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+      <span>已锁屏 · 点击解锁</span>
+    </button>
+
+    <div class="bottom-info">
+      <div class="series-title">
+        <span id="seriesTitle">加载中...</span>
+        <span class="ep-badge" id="epBadge">第1集 · 选集 ▾</span>
+      </div>
+      <div class="series-intro" id="seriesIntro"></div>
+      <div class="quick-pills">
+        <button class="q-pill" id="btnSwipeMode">滑屏 <span id="swipeModeLabel">换剧</span></button>
+        <button class="q-pill" id="btnSpeed">倍速 <span id="speedLabel">1.0x</span></button>
+        <button class="q-pill" id="btnQuality">画质 <span id="qualityLabel">1080p</span></button>
+        <button class="q-pill" id="btnFit">画面 <span id="fitLabel">原始</span></button>
+        <button class="q-pill" id="btnLockPill">🔒 锁屏</button>
+        <button class="q-pill" id="btnRefreshPill">↻ 刷新</button>
+        <button class="q-pill" id="btnShare">分享此剧</button>
+      </div>
+    </div>
+
+    <div class="progress-wrap">
+      <span class="time-txt" id="curTime">00:00</span>
+      <input type="range" class="seek" id="seekBar" min="0" max="100" value="0" step="0.1" />
+      <span class="time-txt" id="durTime">00:00</span>
+    </div>
+  </div>
+
+  <!-- Episodes Sheet -->
+  <div class="sheet-mask" id="epSheet">
+    <div class="sheet">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-head">
+        <div class="sheet-title" id="epSheetTitle">选集</div>
+        <button class="sheet-close" data-close="epSheet">✕</button>
+      </div>
+      <div class="ep-toolbar">
+        <div class="ep-ranges" id="epRanges"></div>
+        <button class="ep-sort-btn" id="epPrevQuick">上一集</button>
+        <button class="ep-sort-btn" id="epSortBtn">倒序</button>
+      </div>
+      <div class="sheet-body">
+        <div class="ep-grid" id="epGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Sheet -->
+  <div class="sheet-mask" id="searchSheet">
+    <div class="sheet">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-head">
+        <div class="sheet-title">搜索短剧</div>
+        <button class="sheet-close" data-close="searchSheet">✕</button>
+      </div>
+      <div class="search-box">
+        <input type="search" class="search-input" id="searchInput" placeholder="输入剧名、演员或关键词..." enterkeyhint="search" />
+        <button class="search-go" id="searchGo">搜索</button>
+      </div>
+      <div class="suggest-list" id="suggestList"></div>
+      <div class="sheet-body">
+        <div class="drama-list" id="searchList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rank & Category Sheet -->
+  <div class="sheet-mask" id="rankSheet">
+    <div class="sheet">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-head">
+        <div class="sheet-title">榜单 & 分类找剧</div>
+        <button class="sheet-close" data-close="rankSheet">✕</button>
+      </div>
+      <div class="lib-tabs" id="rankCats"></div>
+      <div class="lib-tabs" id="rankTabs"></div>
+      <div class="lib-tabs" id="rankFilters"></div>
+      <div class="sheet-body">
+        <div class="drama-list" id="rankList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Library / History Sheet -->
+  <div class="sheet-mask" id="libSheet">
+    <div class="sheet">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-head">
+        <div class="sheet-title">我的追剧 & 历史</div>
+        <button class="sheet-close" data-close="libSheet">✕</button>
+      </div>
+      <div class="lib-tabs">
+        <button class="lib-tab active" data-lib="all">全部</button>
+        <button class="lib-tab" data-lib="fav">只看收藏</button>
+        <button class="lib-tab" data-lib="hist">观看历史</button>
+        <button class="lib-tab" id="btnClearHist" style="margin-left:auto;color:#ff6b81">清空历史</button>
+      </div>
+      <div class="sheet-body">
+        <div class="drama-list" id="libList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="authMask">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>
+      </div>
+      <div class="auth-title">红果短剧</div>
+      <div class="auth-sub">请输入访问密码后观看</div>
+      <input type="password" class="auth-input" id="authInput" placeholder="访问密码" enterkeyhint="go" />
+      <div class="auth-err" id="authErr"></div>
+      <button class="auth-btn" id="authBtn">进入观看</button>
+    </div>
+  </div>
+
+  <script>
+    const player = document.getElementById("player");
+    const players = [player];
+    function standbyPlayer() { return null; }
+    function unlockPlayers() {
+      state.userInteracted = true;
+    }
+    const posterOverlay = document.getElementById("posterOverlay");
+    const bigPlayBtn = document.getElementById("bigPlayBtn");
+    const spinner = document.getElementById("spinner");
+    const loadingCover = document.getElementById("loadingCover");
+    const topLoader = document.getElementById("topLoader");
+    const loadingText = document.getElementById("loadingText");
+    let hasFirstFrame = false;
+    function setLoading(active, text, coverUrl) {
+      if (coverUrl !== undefined) {
+        loadingCover.style.backgroundImage = coverUrl ? `url("${String(coverUrl).replace(/"/g, '\\"')}")` : "none";
+      }
+      if (active) {
+        if (text) loadingText.textContent = text;
+        spinner.classList.add("show");
+        topLoader.classList.add("show");
+        if (!hasFirstFrame) loadingCover.classList.add("show");
+      } else {
+        spinner.classList.remove("show");
+        topLoader.classList.remove("show");
+        loadingCover.classList.remove("show");
+      }
+    }
+    const centerControl = document.getElementById("centerControl");
+    const centerIcon = document.getElementById("centerIcon");
+    const seekBar = document.getElementById("seekBar");
+    const curTimeEl = document.getElementById("curTime");
+    const durTimeEl = document.getElementById("durTime");
+    const toastEl = document.getElementById("toast");
+    const stage = document.getElementById("stage");
+    const nextHint = document.getElementById("nextHint");
+    const nextHintText = document.getElementById("nextHintText");
+    nextHint.addEventListener("click", (e) => {
+      e.stopPropagation();
+      unlockPlayers();
+      nextHint.classList.remove("show");
+      playEpisode(state.epIdx + 1);
+    });
+
+    const state = {
+      tabType: 16,
+      feed: [],
+      feedIdx: 0,
+      cursor: 0,
+      loadingFeed: false,
+      series: null,
+      episodes: [],
+      epIdx: 0,
+      quality: localStorage.getItem("hg_quality") || "720p",
+      speed: parseFloat(localStorage.getItem("hg_speed") || "1.0"),
+      fit: localStorage.getItem("hg_fit") || "contain",
+      swipeMode: "series", // "series" (换剧) or "episode" (切集)
+      seeking: false,
+      userInteracted: false,
+      pendingSeekSec: 0,
+      prefetchedEpKey: "",
+      playCache: new Map(),
+      preloadState: { key: "", url: "", ready: false },
+      longPressing: false,
+      screenLocked: false,
+      libTab: "all",
+      favorites: JSON.parse(localStorage.getItem("hg_favs") || "{}"),
+      history: JSON.parse(localStorage.getItem("hg_hist") || "{}"),
+    };
+
+    document.getElementById("qualityLabel").textContent = state.quality;
+    document.getElementById("speedLabel").textContent = state.speed.toFixed(2).replace(/\.00$/, ".0") + "x";
+    document.getElementById("fitLabel").textContent = state.fit === "cover" ? "铺满" : "原始";
+    player.style.objectFit = state.fit;
+    function applySpeed() {
+      player.defaultPlaybackRate = state.speed;
+      if (!state.longPressing) player.playbackRate = state.speed;
+    }
+    applySpeed();
+
+    function syncViewportHeight() {
+      const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      if (h > 0) document.documentElement.style.setProperty("--app-h", Math.ceil(h) + "px");
+    }
+    syncViewportHeight();
+    window.addEventListener("resize", syncViewportHeight);
+    window.addEventListener("orientationchange", () => setTimeout(syncViewportHeight, 120));
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", syncViewportHeight);
+    player.addEventListener("webkitendfullscreen", () => {
+      setTimeout(() => {
+        syncViewportHeight();
+        player.style.objectFit = player.videoWidth > player.videoHeight ? "contain" : state.fit;
+      }, 60);
+    });
+
+    function setSwipeMode(mode) {
+      state.swipeMode = mode;
+      document.getElementById("swipeModeLabel").textContent = mode === "episode" ? "切集" : "换剧";
+    }
+    document.getElementById("btnSwipeMode").addEventListener("click", () => {
+      const next = state.swipeMode === "series" ? "episode" : "series";
+      setSwipeMode(next);
+      preloadNextEpisode();
+      toast(next === "episode" ? "上下滑: 切换上/下一集" : "上下滑: 切换上/下一部剧");
+    });
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+    }
+
+    function updateSeekFill(pct) {
+      seekBar.style.background = `linear-gradient(to right, #fe2c55 ${pct}%, rgba(255,255,255,0.24) ${pct}%)`;
+    }
+
+    async function api(method, args = []) {
+      const res = await fetch("/api/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method, args }),
+      });
+      if (res.status === 401) {
+        document.getElementById("authMask").classList.add("open");
+        throw new Error("需要访问密码");
+      }
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "请求失败");
+      return data.data;
+    }
+
+    async function submitAuth() {
+      const pwd = document.getElementById("authInput").value.trim();
+      const errEl = document.getElementById("authErr");
+      if (!pwd) { errEl.textContent = "请输入密码"; return; }
+      errEl.textContent = "";
+      document.cookie = "hg_auth=" + encodeURIComponent(pwd) + "; path=/; max-age=2592000; SameSite=Lax";
+      try {
+        await api("FeedCategories", []);
+        document.getElementById("authMask").classList.remove("open");
+        boot();
+      } catch (e) {
+        errEl.textContent = "密码错误，请重试";
+      }
+    }
+    document.getElementById("authBtn").addEventListener("click", submitAuth);
+    document.getElementById("authInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submitAuth();
+    });
+
+    function fmtTime(sec) {
+      if (!isFinite(sec) || sec < 0) return "00:00";
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+    }
+
+    function saveHistory(posSec = 0) {
+      if (!state.series || !state.episodes[state.epIdx]) return;
+      const s = state.series;
+      state.history[s.id] = {
+        id: s.id,
+        title: s.title,
+        cover: s.cover,
+        episodeCount: s.episodeCount || state.episodes.length,
+        epIdx: state.epIdx,
+        posSec: Math.floor(posSec),
+        updatedAt: Date.now(),
+      };
+      const keys = Object.keys(state.history).sort((a, b) => state.history[b].updatedAt - state.history[a].updatedAt);
+      if (keys.length > 50) keys.slice(50).forEach(k => delete state.history[k]);
+      localStorage.setItem("hg_hist", JSON.stringify(state.history));
+      if (state.favorites[s.id]) {
+        state.favorites[s.id].epIdx = state.epIdx;
+        state.favorites[s.id].posSec = Math.floor(posSec);
+        state.favorites[s.id].updatedAt = Date.now();
+        localStorage.setItem("hg_favs", JSON.stringify(state.favorites));
+      }
+    }
+
+    function updateFavUI() {
+      const btn = document.getElementById("btnFav");
+      if (state.series && state.favorites[state.series.id]) btn.classList.add("liked");
+      else btn.classList.remove("liked");
+    }
+
+    function getSeenFeedIds() {
+      try { return JSON.parse(localStorage.getItem("hg_seen_feed") || "[]"); } catch (_) { return []; }
+    }
+    function markFeedSeen(seriesId) {
+      if (!seriesId) return;
+      const seen = getSeenFeedIds().filter(id => id !== seriesId);
+      seen.push(seriesId);
+      if (seen.length > 150) seen.splice(0, seen.length - 150);
+      localStorage.setItem("hg_seen_feed", JSON.stringify(seen));
+    }
+    function getSavedFeedCursor(tabType) {
+      try {
+        const raw = localStorage.getItem("hg_feed_cursor_" + tabType);
+        return raw ? JSON.parse(raw) : 0;
+      } catch (_) { return 0; }
+    }
+    function saveFeedCursor(tabType, cursor) {
+      try {
+        if (cursor) localStorage.setItem("hg_feed_cursor_" + tabType, JSON.stringify(cursor));
+        else localStorage.removeItem("hg_feed_cursor_" + tabType);
+      } catch (_) {}
+    }
+
+    function buildFeedCursor(rawCursor, seenIds, randomizeOffset = false) {
+      let cursorObj = null;
+      if (typeof rawCursor === "string" && rawCursor.trim()) {
+        try {
+          const parsed = JSON.parse(rawCursor);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            cursorObj = { cell_id: null, filter: [], offset: 0, phase_cell: true, plan_id: null, session: "", ...parsed };
+          }
+        } catch (_) {}
+      } else if (rawCursor && typeof rawCursor === "object" && !Array.isArray(rawCursor)) {
+        cursorObj = { cell_id: null, filter: [], offset: 0, phase_cell: true, plan_id: null, session: "", ...rawCursor };
+      }
+      if (!cursorObj) {
+        cursorObj = { cell_id: null, filter: [], offset: 0, phase_cell: true, plan_id: null, session: "" };
+      }
+      const baseFilter = Array.isArray(cursorObj.filter) ? cursorObj.filter : [];
+      const extraIds = Array.isArray(seenIds) ? seenIds : [];
+      const curId = state.series && state.series.id;
+      const merged = [];
+      const added = new Set();
+      for (const id of extraIds.concat(baseFilter, curId ? [curId] : [])) {
+        if (id && !added.has(id)) {
+          added.add(id);
+          merged.push(String(id));
+        }
+      }
+      cursorObj.filter = merged.slice(-60);
+      if (randomizeOffset || !cursorObj.offset) {
+        cursorObj.offset = Math.floor(Math.random() * 6) * 6;
+        cursorObj.session = "";
+      }
+      return JSON.stringify(cursorObj);
+    }
+
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    async function loadFeed(reset = false) {
+      if (state.loadingFeed) return;
+      state.loadingFeed = true;
+      let needBgMore = false;
+      try {
+        const prevSeriesId = state.series && state.series.id;
+        if (reset) {
+          if (prevSeriesId) markFeedSeen(prevSeriesId);
+          state.feed = [];
+          state.feedIdx = 0;
+        }
+        if (reset || state.feed.length === 0) {
+          state.cursor = getSavedFeedCursor(state.tabType);
+        }
+        const seenIds = getSeenFeedIds();
+        const seenSet = new Set(seenIds);
+        const reqCursor = buildFeedCursor(state.cursor, seenIds, reset);
+        let res = await api("RecommendTab", [state.tabType, reqCursor]);
+        let items = (res && res.items) || [];
+        if (!items.length) {
+          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-15), true);
+          res = await api("RecommendTab", [state.tabType, fallbackCursor]);
+          items = (res && res.items) || [];
+        }
+        if (!items.length) {
+          res = await api("RecommendTab", [state.tabType, 0]);
+          items = (res && res.items) || [];
+        }
+        state.cursor = (res && res.cursor) || 0;
+        saveFeedCursor(state.tabType, state.cursor);
+
+        const fresh = items.filter(x => x.series && !seenSet.has(x.series.id) && x.series.id !== prevSeriesId);
+        const seenOther = items.filter(x => x.series && seenSet.has(x.series.id) && x.series.id !== prevSeriesId);
+        const prevOnly = prevSeriesId ? items.filter(x => x.series && x.series.id === prevSeriesId) : [];
+        const ordered = shuffleArray(fresh).concat(shuffleArray(seenOther), prevOnly);
+        const existingIds = new Set(state.feed.map(x => x.series && x.series.id));
+        state.feed.push(...ordered.filter(x => x.series && !existingIds.has(x.series.id)));
+
+        if (reset && state.feed.length > 0) {
+          playFeedItem(0);
+          needBgMore = state.feed.length < 5;
+        } else if (!reset && state.swipeMode === "series") {
+          preloadNextEpisode();
+        }
+      } catch (e) {
+        if (!String(e.message).includes("密码")) toast("加载推荐失败: " + e.message);
+      } finally {
+        state.loadingFeed = false;
+      }
+      if (needBgMore) loadFeed(false);
+    }
+
+    function playFeedItem(idx) {
+      if (idx < 0 || idx >= state.feed.length) return;
+      state.feedIdx = idx;
+      const item = state.feed[idx];
+      const s = item.series;
+      markFeedSeen(s && s.id);
+      const eps = s.episodes && s.episodes.length ? s.episodes : (item.episode ? [item.episode] : []);
+      const startEp = item.episode ? Math.max(0, eps.findIndex(e => e && e.videoId === item.episode.videoId)) : 0;
+      openSeries(s, eps, startEp);
+      if (idx >= state.feed.length - 2) loadFeed(false);
+    }
+
+    let openSeq = 0;
+    const detailCache = new Map();
+    async function openSeries(series, episodes, epIdx = 0, resumeSec = 0) {
+      const seq = ++openSeq;
+      state.series = series;
+      state.episodes = episodes;
+      if (!episodes || episodes.length === 0) {
+        const hit = detailCache.get(series.id);
+        let detail = (hit && Date.now() - hit.ts < 10 * 60 * 1000) ? hit.data : null;
+        if (!detail) {
+          hasFirstFrame = false;
+          setLoading(true, `正在加载《${series.title || "剧集"}》...`, series.cover || "");
+          try {
+            detail = await api("SeriesDetail", [series.id]);
+          } catch (e) {
+            if (seq === openSeq) setLoading(false);
+            throw e;
+          }
+          if (seq !== openSeq) return;
+          if (detailCache.size >= 30) detailCache.delete(detailCache.keys().next().value);
+          detailCache.set(series.id, { data: detail, ts: Date.now() });
+        }
+        state.series = detail;
+        state.episodes = detail.episodes || [];
+      }
+      if (state.episodes.length > 0 && epIdx >= state.episodes.length) {
+        epIdx = state.episodes.length - 1;
+      }
+      updateFavUI();
+      document.getElementById("seriesTitle").textContent = state.series.title;
+      document.getElementById("seriesIntro").textContent = state.series.intro || "";
+      document.getElementById("seriesIntro").classList.remove("expanded");
+      if (state.episodes.length <= 1 && (state.series.episodeCount || 0) > 1) {
+        const bgSid = state.series.id;
+        api("SeriesDetail", [bgSid]).then((detail) => {
+          if (seq === openSeq && state.series && state.series.id === bgSid && detail && Array.isArray(detail.episodes) && detail.episodes.length > state.episodes.length) {
+            state.series = detail;
+            state.episodes = detail.episodes;
+            if (detailCache.size >= 30) detailCache.delete(detailCache.keys().next().value);
+            detailCache.set(bgSid, { data: detail, ts: Date.now() });
+            const curEp = state.episodes[state.epIdx];
+            const num = (curEp && curEp.index) || (state.epIdx + 1);
+            document.getElementById("epBadge").textContent = `第${num}集 / 共${state.episodes.length}集 · 选集 ▾`;
+          }
+        }).catch(() => {});
+      }
+      await playEpisode(epIdx, resumeSec);
+    }
+
+    function pickQualityUrl(info) {
+      const qs = info.qualities || [];
+      return qs.find(q => q.name === state.quality) || qs.find(q => q.name === "720p") || qs[qs.length - 1];
+    }
+
+    const PLAY_CACHE_TTL_MS = 10 * 60 * 1000;
+    function getCachedPlayInfo(cacheKey) {
+      const entry = state.playCache.get(cacheKey);
+      if (!entry) return null;
+      if (Date.now() - entry.ts > PLAY_CACHE_TTL_MS) {
+        state.playCache.delete(cacheKey);
+        return null;
+      }
+      return entry.info;
+    }
+
+    const inFlightPlayInfo = new Map();
+    async function getPlayInfo(seriesId, videoId) {
+      const cacheKey = `${seriesId}:${videoId}`;
+      const cached = getCachedPlayInfo(cacheKey);
+      if (cached) return cached;
+      if (inFlightPlayInfo.has(cacheKey)) return inFlightPlayInfo.get(cacheKey);
+      const p = (async () => {
+        let info;
+        try {
+          info = await api("PlayInfo", [seriesId, videoId, state.quality]);
+        } catch (err) {
+          const msg = String((err && err.message) || err || "");
+          if (msg.includes("通道") || msg.includes("繁忙") || msg.includes("后再试") || msg.includes("空响应") || msg.includes("502") || msg.includes("bytevc2")) throw err;
+          await new Promise(r => setTimeout(r, 450));
+          info = await api("PlayInfo", [seriesId, videoId, state.quality]);
+        }
+        if (state.playCache.size >= 30) {
+          const firstKey = state.playCache.keys().next().value;
+          state.playCache.delete(firstKey);
+        }
+        state.playCache.set(cacheKey, { info, ts: Date.now() });
+        return info;
+      })().finally(() => {
+        inFlightPlayInfo.delete(cacheKey);
+      });
+      inFlightPlayInfo.set(cacheKey, p);
+      return p;
+    }
+
+    function syncMediaPosition(v) {
+      if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
+      if (!v || !isFinite(v.duration) || v.duration <= 0) return;
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: v.duration,
+          playbackRate: v.playbackRate || 1,
+          position: Math.max(0, Math.min(v.duration, v.currentTime || 0)),
+        });
+      } catch (_) {}
+    }
+    function updateMediaSession(ep, num) {
+      if (!("mediaSession" in navigator)) return;
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `${state.series.title} · 第${num}集`,
+        artist: "红果短剧",
+        artwork: ep.cover || state.series.cover ? [{ src: ep.cover || state.series.cover, sizes: "512x512", type: "image/jpeg" }] : [],
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => playEpisode(state.epIdx + 1));
+      navigator.mediaSession.setActionHandler("previoustrack", () => { if (state.epIdx > 0) playEpisode(state.epIdx - 1); });
+      navigator.mediaSession.setActionHandler("play", () => { state.pendingAutoPlay = true; player.play().catch(() => {}); });
+      navigator.mediaSession.setActionHandler("pause", () => { state.pendingAutoPlay = false; player.pause(); });
+      try {
+        navigator.mediaSession.setActionHandler("seekbackward", (d) => {
+          if (player.duration) player.currentTime = Math.max(0, player.currentTime - ((d && d.seekOffset) || 10));
+        });
+        navigator.mediaSession.setActionHandler("seekforward", (d) => {
+          if (player.duration) player.currentTime = Math.min(player.duration, player.currentTime + ((d && d.seekOffset) || 10));
+        });
+        navigator.mediaSession.setActionHandler("seekto", (d) => {
+          if (d && isFinite(d.seekTime) && player.duration) player.currentTime = Math.max(0, Math.min(player.duration, d.seekTime));
+        });
+      } catch (_) {}
+    }
+
+    let preloadRetryAt = 0;
+    let preloadAbort = null;
+    let activeBlobUrl = "";
+    const blobCache = new Map();
+    const skippedPreloadKeys = new Set();
+    const warmInfoKeys = new Set();
+    function storeBlobCache(key, blobUrl) {
+      if (blobCache.has(key)) {
+        const old = blobCache.get(key);
+        blobCache.delete(key);
+        if (old && old !== blobUrl && old !== activeBlobUrl) URL.revokeObjectURL(old);
+      }
+      blobCache.set(key, blobUrl);
+      while (blobCache.size > 3) {
+        const oldestKey = blobCache.keys().next().value;
+        const oldestUrl = blobCache.get(oldestKey);
+        blobCache.delete(oldestKey);
+        if (oldestUrl && oldestUrl !== activeBlobUrl) URL.revokeObjectURL(oldestUrl);
+      }
+    }
+    function clearPreload() {
+      if (preloadAbort) {
+        preloadAbort.abort();
+        preloadAbort = null;
+      }
+      state.preloadState = { key: "", url: "", blobUrl: "", ready: false };
+    }
+    function warmNextPlayInfo() {
+      const nextEp = state.episodes[state.epIdx + 1];
+      if (state.series && nextEp && nextEp.videoId) {
+        const k = `${state.series.id}:${nextEp.videoId}:${state.quality}`;
+        if (!warmInfoKeys.has(k)) {
+          warmInfoKeys.add(k);
+          getPlayInfo(state.series.id, nextEp.videoId).catch(() => { warmInfoKeys.delete(k); });
+        }
+      }
+      const nextFeed = state.feed[state.feedIdx + 1];
+      if (state.swipeMode === "series" && nextFeed && nextFeed.series && nextFeed.episode && nextFeed.episode.videoId) {
+        const fk = `${nextFeed.series.id}:${nextFeed.episode.videoId}:${state.quality}`;
+        if (!warmInfoKeys.has(fk)) {
+          warmInfoKeys.add(fk);
+          getPlayInfo(nextFeed.series.id, nextFeed.episode.videoId).catch(() => { warmInfoKeys.delete(fk); });
+        }
+      }
+      if (warmInfoKeys.size > 60) warmInfoKeys.clear();
+    }
+    async function preloadNextEpisode() {
+      const nextEp = state.episodes[state.epIdx + 1];
+      const nextFeed = state.feed[state.feedIdx + 1];
+      const hasNextEp = !!(state.series && nextEp && nextEp.videoId);
+      const hasNextFeed = !!(nextFeed && nextFeed.series && nextFeed.episode && nextFeed.episode.videoId);
+
+      let targetSeriesId = "";
+      let targetVideoId = "";
+      let nextCover = "";
+      let isSameSeries = true;
+
+      if (hasNextEp) {
+        const epKey = `${state.series.id}:${nextEp.videoId}:${state.quality}`;
+        if (!blobCache.has(epKey) && !skippedPreloadKeys.has(epKey)) {
+          targetSeriesId = state.series.id;
+          targetVideoId = nextEp.videoId;
+          nextCover = nextEp.cover || (state.series && state.series.cover) || "";
+          isSameSeries = true;
+        }
+      }
+      if (!targetVideoId && hasNextFeed && (state.swipeMode === "series" || !hasNextEp)) {
+        const feedKey = `${nextFeed.series.id}:${nextFeed.episode.videoId}:${state.quality}`;
+        if (!blobCache.has(feedKey) && !skippedPreloadKeys.has(feedKey)) {
+          targetSeriesId = nextFeed.series.id;
+          targetVideoId = nextFeed.episode.videoId;
+          nextCover = nextFeed.episode.cover || nextFeed.series.cover || "";
+          isSameSeries = false;
+        }
+      }
+      if (!targetSeriesId || !targetVideoId) return;
+      const key = `${targetSeriesId}:${targetVideoId}:${state.quality}`;
+      if (nextCover) { const img = new Image(); img.src = nextCover; }
+      if (blobCache.has(key) || skippedPreloadKeys.has(key) || state.preloadState.key === key) return;
+      if (Date.now() < preloadRetryAt) return;
+      clearPreload();
+      state.preloadState = { key, url: "", blobUrl: "", ready: false };
+      try {
+        const info = await getPlayInfo(targetSeriesId, targetVideoId);
+        if (state.preloadState.key !== key) return;
+        const chosen = pickQualityUrl(info);
+        if (!chosen) {
+          clearPreload();
+          preloadRetryAt = Date.now() + 3000;
+          return;
+        }
+        state.preloadState.url = chosen.url;
+        // Pre-download next episode into a local Blob URL so AVPlayer switches in RAM with zero network pause
+        preloadAbort = new AbortController();
+        const res = await fetch(chosen.url, { signal: preloadAbort.signal });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const len = parseInt(res.headers.get("content-length") || "0", 10);
+        const maxBlobBytes = isSameSeries ? (35 * 1024 * 1024) : (12 * 1024 * 1024);
+        if (!len || len > maxBlobBytes) {
+          skippedPreloadKeys.add(key);
+          clearPreload();
+          return;
+        }
+        const blob = await res.blob();
+        if (state.preloadState.key !== key) return;
+        const bUrl = URL.createObjectURL(blob);
+        storeBlobCache(key, bUrl);
+        state.preloadState.blobUrl = bUrl;
+        state.preloadState.ready = true;
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        if (String(err && err.message).includes("bytevc2") && state.swipeMode === "series") {
+          const nextFeed = state.feed[state.feedIdx + 1];
+          if (nextFeed && nextFeed.series && nextFeed.series.id === targetSeriesId) {
+            state.feed.splice(state.feedIdx + 1, 1);
+            clearPreload();
+            if (state.feedIdx >= state.feed.length - 3) loadFeed(false);
+            preloadNextEpisode();
+            return;
+          }
+        }
+        if (state.preloadState.key === key) {
+          clearPreload();
+          preloadRetryAt = Date.now() + 3000;
+        }
+      }
+    }
+
+    let playSeq = 0;
+    async function playEpisode(epIdx, resumeSec = 0, isRetry = false) {
+      if (!state.episodes.length) return;
+      if (epIdx < 0) epIdx = 0;
+      if (epIdx >= state.episodes.length) {
+        toast("已是最后一集，切换下一部");
+        if (state.feed.length > state.feedIdx + 1) playFeedItem(state.feedIdx + 1);
+        return;
+      }
+      const seq = ++playSeq;
+      if (!isRetry) state.retryCount = 0;
+      state.epIdx = epIdx;
+      state.pendingSeekSec = resumeSec > 3 ? resumeSec : 0;
+      const ep = state.episodes[epIdx];
+      const num = ep.index || epIdx + 1;
+      document.getElementById("epBadge").textContent = `第${num}集 / 共${state.episodes.length}集 · 选集 ▾`;
+      document.getElementById("epCircle").textContent = `第${num}集`;
+      nextHint.classList.remove("show");
+      saveHistory(state.pendingSeekSec);
+      updateSeekFill(0);
+      seekBar.value = 0;
+      curTimeEl.textContent = "00:00";
+      lastSaveSec = 0;
+
+      const epCoverInit = ep.cover || (state.series && state.series.cover) || "";
+      posterOverlay.style.backgroundImage = epCoverInit ? `url("${epCoverInit}")` : "none";
+      if (!state.userInteracted) posterOverlay.classList.add("show");
+
+      const expectedKey = `${state.series.id}:${ep.videoId}:${state.quality}`;
+      const preloadedBlobUrl = (!isRetry && (blobCache.get(expectedKey) || (state.preloadState.key === expectedKey && state.preloadState.blobUrl))) || "";
+      if (preloadedBlobUrl) {
+        blobCache.delete(expectedKey);
+        state.preloadState = { key: "", url: "", blobUrl: "", ready: false };
+      } else {
+        clearPreload();
+      }
+
+      const cacheKey = `${state.series.id}:${ep.videoId}`;
+      const cachedInfo = !isRetry ? getCachedPlayInfo(cacheKey) : null;
+      const epCover = ep.cover || (state.series && state.series.cover) || "";
+      hasFirstFrame = false;
+      if (!preloadedBlobUrl) {
+        const msg = state.swipeMode === "series" && num === 1
+          ? `正在加载《${state.series.title || "新剧"}》...`
+          : `正在加载 第 ${num} 集...`;
+        setLoading(true, msg, epCover);
+      } else {
+        setLoading(false, "", epCover);
+      }
+
+      try {
+        let targetSrc = preloadedBlobUrl;
+        if (!targetSrc) {
+          const info = cachedInfo || await getPlayInfo(state.series.id, ep.videoId);
+          if (seq !== playSeq) return;
+          const chosen = pickQualityUrl(info);
+          if (!chosen) throw new Error("暂无可用播放源");
+          targetSrc = chosen.url;
+        }
+
+        const prevBlobUrl = activeBlobUrl;
+        activeBlobUrl = preloadedBlobUrl;
+        player.poster = ep.cover || (state.series && state.series.cover) || "";
+        player.muted = false;
+        player.defaultPlaybackRate = state.speed;
+        player.src = targetSrc;
+        applySpeed();
+        if (player.webkitPresentationMode !== "picture-in-picture" && !document.pictureInPictureElement) {
+          player.load();
+        }
+        if (prevBlobUrl && prevBlobUrl !== activeBlobUrl) {
+          URL.revokeObjectURL(prevBlobUrl);
+        }
+        updateMediaSession(ep, num);
+
+        if (state.userInteracted) {
+          state.pendingAutoPlay = true;
+          posterOverlay.classList.remove("show");
+          player.play().catch(err => {
+            if (err && (err.name === "AbortError" || player.readyState < 3)) return;
+            setLoading(false);
+            posterOverlay.classList.add("show");
+          });
+        } else {
+          setLoading(false);
+        }
+      } catch (e) {
+        const msg = String((e && e.message) || e || "");
+        if (!isRetry && (msg.includes("通道") || msg.includes("繁忙") || msg.includes("502"))) {
+          setLoading(true, "播放通道恢复中，正在自动重试...", epCover);
+          setTimeout(() => { if (seq === playSeq) playEpisode(epIdx, resumeSec, true); }, 2200);
+          return;
+        }
+        setLoading(false);
+        if (msg.includes("bytevc2") && state.swipeMode === "series" && state.feed.length > state.feedIdx + 1) {
+          toast("该剧编码不兼容，已自动切换下一部");
+          setTimeout(() => { if (seq === playSeq) playFeedItem(state.feedIdx + 1); }, 100);
+          return;
+        }
+        toast("播放失败: " + msg);
+      }
+    }
+
+    // Auto-hide UI when playing; tap screen to toggle
+    let uiTimer = 0;
+    function syncCenterIcon() {
+      centerIcon.innerHTML = player.paused
+        ? '<path d="M8 5v14l11-7z"/>'
+        : '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
+    }
+    function hideUI() {
+      clearTimeout(uiTimer);
+      if (!player.paused && !document.querySelector(".sheet-mask.open")) {
+        stage.classList.add("clean");
+      }
+    }
+    function showUI(autoHide = true) {
+      stage.classList.remove("clean");
+      syncCenterIcon();
+      clearTimeout(uiTimer);
+      if (autoHide && !player.paused) {
+        uiTimer = setTimeout(hideUI, 3800);
+      }
+    }
+
+    // Player events (bound to both A/B <video> elements; only active player updates UI)
+    let lastSaveSec = 0;
+    let stallTimer = 0;
+    let slowHintTimer = 0;
+    let slowHintShown = false;
+    function clearStallWatch() {
+      clearTimeout(stallTimer);
+      clearTimeout(slowHintTimer);
+      stallTimer = 0;
+      slowHintTimer = 0;
+    }
+    function handlePlayerFailure(v, reason) {
+      if (v !== player) {
+        if (v === standbyPlayer()) {
+          state.preloadState = { key: "", url: "", ready: false };
+          v.removeAttribute("src");
+        }
+        return;
+      }
+      clearStallWatch();
+      const ep = state.episodes[state.epIdx];
+      if (!ep || !state.series) return;
+      state.playCache.delete(`${state.series.id}:${ep.videoId}`);
+      const curSec = (!isNaN(v.currentTime) && v.currentTime > 3) ? v.currentTime : 0;
+
+      if ((state.retryCount || 0) < 2) {
+        state.retryCount = (state.retryCount || 0) + 1;
+        if (state.retryCount === 2 && state.quality === "1080p") {
+          state.quality = "720p";
+          localStorage.setItem("hg_quality", "720p");
+          document.getElementById("qualityLabel").textContent = "720p";
+          toast(`1080p ${reason}，已自动切换 720p 重试`);
+        } else {
+          toast(`视频${reason}，正在重试 (${state.retryCount}/2)...`);
+        }
+        setTimeout(() => {
+          if (state.episodes[state.epIdx]?.videoId === ep.videoId) {
+            playEpisode(state.epIdx, curSec, true);
+          }
+        }, 500);
+      } else {
+        setLoading(false);
+        posterOverlay.classList.add("show");
+        syncCenterIcon();
+        showUI(false);
+        toast(`播放${reason}，请点击播放重试或切换画质`);
+      }
+    }
+    function startStallWatch(v) {
+      if (v !== player || v.paused || !v.src) return;
+      clearStallWatch();
+      if (!slowHintShown && state.quality === "1080p") {
+        slowHintTimer = setTimeout(() => {
+          if (v === player && !v.paused && v.readyState < 3 && !slowHintShown) {
+            slowHintShown = true;
+            setLoading(true, "正在缓冲高清片源，可切 720p");
+            toast("正在缓冲高清片源，可切 720p 秒播");
+          }
+        }, 8000);
+      }
+      stallTimer = setTimeout(() => {
+        if (v === player && !v.paused && v.readyState < 3) {
+          handlePlayerFailure(v, "加载超时");
+        }
+      }, 35000);
+    }
+
+    players.forEach(v => {
+      v.addEventListener("waiting", () => {
+        if (v === player) {
+          setLoading(true, hasFirstFrame ? "正在缓冲..." : undefined);
+          startStallWatch(v);
+        }
+      });
+      v.addEventListener("stalled", () => {
+        if (v === player && !v.paused) {
+          setLoading(true, hasFirstFrame ? "网络波动，缓冲中..." : undefined);
+          startStallWatch(v);
+        }
+      });
+      v.addEventListener("error", () => {
+        if (!v.getAttribute("src")) return;
+        handlePlayerFailure(v, "加载失败");
+      });
+      v.addEventListener("loadeddata", () => {
+        if (v !== player) return;
+        hasFirstFrame = true;
+        loadingCover.classList.remove("show");
+        if (state.pendingAutoPlay && state.userInteracted && v.paused) {
+          v.play().catch(() => {});
+        }
+      });
+      v.addEventListener("playing", () => {
+        if (v !== player) return;
+        hasFirstFrame = true;
+        clearStallWatch();
+        state.retryCount = 0;
+        state.pendingAutoPlay = false;
+        setLoading(false);
+        posterOverlay.classList.remove("show");
+        applySpeed();
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+        syncMediaPosition(v);
+        syncCenterIcon();
+        hideUI();
+      });
+      v.addEventListener("pause", () => {
+        if (v !== player) return;
+        clearStallWatch();
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+        syncMediaPosition(v);
+        syncCenterIcon();
+        showUI(false);
+      });
+      v.addEventListener("seeked", () => { if (v === player) syncMediaPosition(v); });
+      v.addEventListener("canplay", () => {
+        if (v === player) {
+          clearStallWatch();
+          setLoading(false);
+          if (state.pendingAutoPlay && state.userInteracted && v.paused) {
+            v.play().catch(() => posterOverlay.classList.add("show"));
+          }
+        } else if (v === standbyPlayer() && state.preloadState.url) {
+          state.preloadState.ready = true;
+        }
+      });
+      v.addEventListener("loadedmetadata", () => {
+        if (v !== player) return;
+        applySpeed();
+        durTimeEl.textContent = fmtTime(v.duration);
+        v.style.objectFit = v.videoWidth > v.videoHeight ? "contain" : state.fit;
+        if (state.pendingSeekSec > 0 && v.duration > state.pendingSeekSec + 2) {
+          v.currentTime = state.pendingSeekSec;
+          state.pendingSeekSec = 0;
+        }
+        syncMediaPosition(v);
+      });
+      v.addEventListener("timeupdate", () => {
+        if (v !== player || state.seeking || !v.duration) return;
+        clearStallWatch();
+        const pct = (v.currentTime / v.duration) * 100;
+        seekBar.value = pct;
+        updateSeekFill(pct);
+        curTimeEl.textContent = fmtTime(v.currentTime);
+        if (Math.abs(v.currentTime - lastSaveSec) >= 5) {
+          lastSaveSec = v.currentTime;
+          saveHistory(v.currentTime);
+        }
+        const nextEp = state.episodes[state.epIdx + 1];
+        if (v.currentTime >= 2.0 || (v.duration > 0 && v.currentTime > v.duration * 0.2)) {
+          warmNextPlayInfo();
+          preloadNextEpisode();
+        }
+        const rem = Math.ceil(v.duration - v.currentTime);
+        if (v.duration > 8 && rem > 0 && rem <= 5 && !v.paused) {
+          if (nextEp) {
+            const nextNum = nextEp.index || (state.epIdx + 2);
+            nextHintText.textContent = `即将播放 第${nextNum}集 · ${rem}s`;
+            nextHint.classList.add("show");
+          } else if (state.feed.length > state.feedIdx + 1) {
+            nextHintText.textContent = `即将播放下一部 · ${rem}s`;
+            nextHint.classList.add("show");
+          } else {
+            nextHint.classList.remove("show");
+          }
+        } else {
+          nextHint.classList.remove("show");
+        }
+      });
+      v.addEventListener("ended", () => {
+        if (v !== player) return;
+        clearStallWatch();
+        nextHint.classList.remove("show");
+        playEpisode(state.epIdx + 1);
+      });
+      v.addEventListener("click", () => {
+        if (v !== player || "ontouchstart" in window) return;
+        if (state.screenLocked) { pulseUnlockBtn(); return; }
+        unlockPlayers();
+        if (stage.classList.contains("clean")) showUI(true);
+        else hideUI();
+      });
+    });
+
+    // Seek bar
+    seekBar.addEventListener("input", () => {
+      state.seeking = true;
+      updateSeekFill(seekBar.value);
+      if (player.duration) {
+        curTimeEl.textContent = fmtTime((seekBar.value / 100) * player.duration);
+      }
+    });
+    seekBar.addEventListener("change", () => {
+      if (player.duration) {
+        player.currentTime = (seekBar.value / 100) * player.duration;
+      }
+      state.seeking = false;
+    });
+
+    // First user gesture play (clicking anywhere on posterOverlay also plays)
+    function handleBigPlay(e) {
+      e.stopPropagation();
+      unlockPlayers();
+      posterOverlay.classList.remove("show");
+      if ((!player.getAttribute("src") || player.error) && state.episodes.length) {
+        playEpisode(state.epIdx);
+        return;
+      }
+      state.pendingAutoPlay = true;
+      player.playbackRate = state.speed;
+      player.play().catch(() => {});
+    }
+    bigPlayBtn.addEventListener("click", handleBigPlay);
+    posterOverlay.addEventListener("click", handleBigPlay);
+
+    // Center Play/Pause button
+    centerControl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      unlockPlayers();
+      if (player.paused) {
+        posterOverlay.classList.remove("show");
+        if ((!player.getAttribute("src") || player.error) && state.episodes.length) {
+          playEpisode(state.epIdx);
+          return;
+        }
+        state.pendingAutoPlay = true;
+        player.playbackRate = state.speed;
+        player.play().catch(() => {});
+      } else {
+        state.pendingAutoPlay = false;
+        player.pause();
+      }
+    });
+
+    // Screen lock (anti-accidental-touch)
+    const unlockBtn = document.getElementById("unlockBtn");
+    let unlockHideTimer = 0;
+    function pulseUnlockBtn() {
+      if (!state.screenLocked) return;
+      unlockBtn.classList.add("show");
+      clearTimeout(unlockHideTimer);
+      unlockHideTimer = setTimeout(() => unlockBtn.classList.remove("show"), 2800);
+    }
+    function setScreenLock(locked) {
+      state.screenLocked = !!locked;
+      clearTimeout(unlockHideTimer);
+      if (state.screenLocked) {
+        resetTouchState();
+        stage.classList.add("locked");
+        pulseUnlockBtn();
+        toast("已锁屏防误触");
+      } else {
+        unlockBtn.classList.remove("show");
+        stage.classList.remove("locked");
+        showUI(true);
+        toast("已解锁屏幕");
+      }
+    }
+    document.getElementById("btnLock").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setScreenLock(true);
+    });
+    document.getElementById("btnLockPill").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setScreenLock(true);
+    });
+    document.getElementById("btnRefreshPill").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      toast("正在刷新页面...");
+      try {
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+      } catch (_) {}
+      location.replace(location.pathname + "?v=" + Date.now());
+    });
+    unlockBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setScreenLock(false);
+    });
+
+    // Any control interaction resets auto-hide timer
+    stage.addEventListener("click", (e) => {
+      if (state.screenLocked) {
+        if (!e.target.closest("#unlockBtn")) pulseUnlockBtn();
+        return;
+      }
+      if (e.target.closest(".top-bar, .right-bar, .bottom-info, .progress-wrap")) {
+        showUI(true);
+      }
+    });
+
+    // Tap video to toggle UI, double-tap to play/pause, long-press 2.0x, vertical swipe (feed), horizontal swipe (seek)
+    const seekHud = document.getElementById("seekHud");
+    let touchStartY = 0, touchStartX = 0, moved = false, pressTimer = 0, lastTap = 0;
+    let hSeeking = false, hStartSec = 0, hTargetSec = 0, vDragging = false, vLastDy = 0;
+    function setSwipeOffset(y, animate) {
+      const tr = animate ? "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)" : "none";
+      player.style.transition = tr;
+      loadingCover.style.transition = animate ? "opacity 0.28s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)" : "opacity 0.28s ease";
+      player.style.transform = y ? `translateY(${y}px)` : "";
+      loadingCover.style.transform = y ? `translateY(${y}px) scale(1.1)` : "scale(1.1)";
+    }
+    function resetTouchState() {
+      clearTimeout(pressTimer);
+      if (vDragging) { vDragging = false; setSwipeOffset(0, true); }
+      if (hSeeking) { hSeeking = false; seekHud.classList.remove("show"); }
+      if (state.longPressing) {
+        state.longPressing = false;
+        player.playbackRate = state.speed;
+        seekHud.classList.remove("show");
+      }
+      touchStartY = 0;
+      vLastDy = 0;
+    }
+    stage.addEventListener("touchstart", (e) => {
+      if (state.screenLocked) {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+        moved = false;
+        return;
+      }
+      if (e.target.closest(".top-bar, .right-bar, .bottom-info, .progress-wrap, .sheet-mask, #posterOverlay, #centerControl, #nextHint, #unlockBtn")) return;
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      moved = false;
+      hSeeking = false;
+      vDragging = false;
+      vLastDy = 0;
+      state.longPressing = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        if (!moved && !player.paused) {
+          state.longPressing = true;
+          player.playbackRate = 2.0;
+          seekHud.textContent = "⏩ 2.0x 快进中";
+          seekHud.classList.add("show");
+        }
+      }, 350);
+    }, { passive: true });
+    stage.addEventListener("touchmove", (e) => {
+      if (!touchStartY) return;
+      const dx = e.touches[0].clientX - touchStartX;
+      const dy = e.touches[0].clientY - touchStartY;
+      if (Math.abs(dy) > 12 || Math.abs(dx) > 12) {
+        moved = true;
+        clearTimeout(pressTimer);
+      }
+      if (state.screenLocked) return;
+      if (!vDragging && !state.longPressing && player.duration && (hSeeking || (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.4))) {
+        if (!hSeeking) {
+          hSeeking = true;
+          hStartSec = player.currentTime || 0;
+        }
+        const deltaSec = (dx / window.innerWidth) * Math.min(90, player.duration);
+        hTargetSec = Math.max(0, Math.min(player.duration, hStartSec + deltaSec));
+        seekHud.textContent = `${fmtTime(hTargetSec)} / ${fmtTime(player.duration)}`;
+        seekHud.classList.add("show");
+      } else if (!hSeeking && !state.longPressing && (vDragging || (Math.abs(dy) > 16 && Math.abs(dy) > Math.abs(dx) * 1.25))) {
+        vDragging = true;
+        vLastDy = dy;
+        setSwipeOffset(Math.max(-140, Math.min(140, dy * 0.42)), false);
+      }
+    }, { passive: true });
+    stage.addEventListener("touchcancel", resetTouchState);
+    stage.addEventListener("touchend", (e) => {
+      clearTimeout(pressTimer);
+      if (state.screenLocked) {
+        touchStartY = 0;
+        if (!moved && !e.target.closest("#unlockBtn")) pulseUnlockBtn();
+        return;
+      }
+      if (vDragging) {
+        vDragging = false;
+        setSwipeOffset(0, true);
+      }
+      if (hSeeking) {
+        hSeeking = false;
+        seekHud.classList.remove("show");
+        if (player.duration) player.currentTime = hTargetSec;
+        touchStartY = 0;
+        return;
+      }
+      if (state.longPressing) {
+        state.longPressing = false;
+        player.playbackRate = state.speed;
+        seekHud.classList.remove("show");
+        touchStartY = 0;
+        return;
+      }
+      if (!touchStartY) return;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      touchStartY = 0;
+      if (Math.abs(dy) > 65 && Math.abs(dy) > Math.abs(dx)) {
+        unlockPlayers();
+        if (state.swipeMode === "episode") {
+          if (dy < 0) playEpisode(state.epIdx + 1);
+          else if (state.epIdx > 0) playEpisode(state.epIdx - 1);
+          else toast("已经是第1集了");
+        } else {
+          if (dy < 0) playFeedItem(state.feedIdx + 1);
+          else if (state.feedIdx > 0) playFeedItem(state.feedIdx - 1);
+          else toast("已经是第一部了");
+        }
+      } else if (!moved && !e.target.closest(".top-bar, .right-bar, .bottom-info, .progress-wrap, #posterOverlay, #centerControl, #nextHint")) {
+        unlockPlayers();
+        const now = Date.now();
+        if (now - lastTap < 260) {
+          lastTap = 0;
+          if (player.paused) player.play().catch(() => {});
+          else { state.pendingAutoPlay = false; player.pause(); }
+        } else {
+          lastTap = now;
+          if (stage.classList.contains("clean")) showUI(true);
+          else hideUI();
+        }
+      }
+    });
+
+    // Desktop keyboard shortcuts
+    document.addEventListener("keydown", (e) => {
+      if (state.screenLocked) {
+        if (e.key === "Escape") setScreenLock(false);
+        return;
+      }
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      if (document.querySelector(".sheet-mask.open") || document.getElementById("authMask").classList.contains("open")) return;
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        unlockPlayers();
+        if (player.paused) { state.pendingAutoPlay = true; player.play().catch(() => {}); }
+        else { state.pendingAutoPlay = false; player.pause(); }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        unlockPlayers();
+        if (state.swipeMode === "episode") playEpisode(state.epIdx + 1);
+        else playFeedItem(state.feedIdx + 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        unlockPlayers();
+        if (state.swipeMode === "episode") { if (state.epIdx > 0) playEpisode(state.epIdx - 1); }
+        else if (state.feedIdx > 0) playFeedItem(state.feedIdx - 1);
+      } else if (e.key === "ArrowRight" && player.duration) {
+        e.preventDefault();
+        player.currentTime = Math.min(player.duration, player.currentTime + 5);
+      } else if (e.key === "ArrowLeft" && player.duration) {
+        e.preventDefault();
+        player.currentTime = Math.max(0, player.currentTime - 5);
+      }
+    });
+
+    // Tabs
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const wasActive = btn.classList.contains("active");
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.tabType = parseInt(btn.dataset.tab, 10);
+        state.userInteracted = true;
+        setSwipeMode("series");
+        if (wasActive) toast("已为你随机换一批");
+        loadFeed(true);
+      });
+    });
+
+    // Intro expand
+    document.getElementById("seriesIntro").addEventListener("click", function () {
+      this.classList.toggle("expanded");
+    });
+
+    // Favorite
+    document.getElementById("btnFav").addEventListener("click", () => {
+      if (!state.series) return;
+      const id = state.series.id;
+      if (state.favorites[id]) {
+        delete state.favorites[id];
+        toast("已取消收藏");
+      } else {
+        state.favorites[id] = {
+          id, title: state.series.title, cover: state.series.cover,
+          episodeCount: state.episodes.length, epIdx: state.epIdx, updatedAt: Date.now()
+        };
+        toast("已加入追剧收藏");
+      }
+      localStorage.setItem("hg_favs", JSON.stringify(state.favorites));
+      updateFavUI();
+    });
+
+    // Next episode
+    document.getElementById("btnNextEp").addEventListener("click", () => {
+      state.userInteracted = true;
+      playEpisode(state.epIdx + 1);
+    });
+
+    // Speed
+    const speeds = [1.0, 1.25, 1.5, 2.0, 3.0];
+    document.getElementById("btnSpeed").addEventListener("click", () => {
+      const idx = (speeds.indexOf(state.speed) + 1) % speeds.length;
+      state.speed = speeds[idx];
+      applySpeed();
+      localStorage.setItem("hg_speed", state.speed);
+      document.getElementById("speedLabel").textContent = state.speed.toFixed(2).replace(/\.00$/, ".0") + "x";
+      toast("倍速: " + state.speed + "x");
+    });
+
+    // Share current drama direct link (?s=seriesId&ep=epIndex)
+    document.getElementById("btnShare").addEventListener("click", async () => {
+      if (!state.series) return;
+      const url = `${location.origin}${location.pathname}?s=${encodeURIComponent(state.series.id)}&ep=${state.epIdx + 1}`;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: state.series.title, text: `推荐你看《${state.series.title}》第${state.epIdx + 1}集`, url });
+        } else if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          toast("已复制本剧直达链接");
+        }
+      } catch (_) {
+        try {
+          await navigator.clipboard.writeText(url);
+          toast("已复制本剧直达链接");
+        } catch (__) {
+          toast("复制失败，请手动复制地址栏");
+        }
+      }
+    });
+
+    // Fit toggle (contain vs cover)
+    document.getElementById("btnFit").addEventListener("click", () => {
+      state.fit = state.fit === "contain" ? "cover" : "contain";
+      localStorage.setItem("hg_fit", state.fit);
+      player.style.objectFit = player.videoWidth > player.videoHeight ? "contain" : state.fit;
+      document.getElementById("fitLabel").textContent = state.fit === "cover" ? "铺满" : "原始";
+      toast(state.fit === "cover" ? "画面: 铺满全屏" : "画面: 原始比例（不裁剪）");
+    });
+
+    // Quality
+    const qualities = ["1080p", "720p", "540p"];
+    document.getElementById("btnQuality").addEventListener("click", () => {
+      const idx = (qualities.indexOf(state.quality) + 1) % qualities.length;
+      state.quality = qualities[idx];
+      localStorage.setItem("hg_quality", state.quality);
+      document.getElementById("qualityLabel").textContent = state.quality;
+      toast("已切换画质: " + state.quality);
+      const cur = player.currentTime || 0;
+      playEpisode(state.epIdx, cur);
+    });
+
+    // PiP
+    document.getElementById("btnPiP").addEventListener("click", async () => {
+      state.userInteracted = true;
+      if (player.paused) await player.play().catch(() => {});
+      try {
+        if (typeof player.webkitSetPresentationMode === "function") {
+          const next = player.webkitPresentationMode === "picture-in-picture" ? "inline" : "picture-in-picture";
+          player.webkitSetPresentationMode(next);
+        } else if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else if (player.requestPictureInPicture) {
+          await player.requestPictureInPicture();
+        } else {
+          toast("当前浏览器不支持画中画");
+        }
+      } catch (e) {
+        toast("请先开始播放后再开启小窗");
+      }
+    });
+
+    // Fullscreen
+    document.getElementById("btnFull").addEventListener("click", async () => {
+      state.userInteracted = true;
+      if (player.paused) await player.play().catch(() => {});
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if (stage.requestFullscreen && !/iPhone|iPod/.test(navigator.userAgent)) {
+          await stage.requestFullscreen();
+        } else if (typeof player.webkitEnterFullscreen === "function") {
+          player.webkitEnterFullscreen();
+        } else if (typeof player.webkitSetPresentationMode === "function") {
+          player.webkitSetPresentationMode("fullscreen");
+        } else if (player.requestFullscreen) {
+          await player.requestFullscreen();
+        } else {
+          toast("当前浏览器不支持全屏");
+        }
+      } catch (e) {
+        toast("请先开始播放后再开启全屏");
+      }
+    });
+
+    // Sheets
+    function openSheet(id) { document.getElementById(id).classList.add("open"); }
+    function closeSheet(id) { document.getElementById(id).classList.remove("open"); }
+    document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeSheet(b.dataset.close)));
+    document.querySelectorAll(".sheet-mask").forEach(m => m.addEventListener("click", (e) => {
+      if (e.target === m) m.classList.remove("open");
+    }));
+    document.querySelectorAll(".sheet").forEach(sheet => {
+      let sStartY = 0, sDy = 0, sDragging = false;
+      sheet.addEventListener("touchstart", (e) => {
+        if (!e.target.closest(".sheet-grabber, .sheet-head")) return;
+        sStartY = e.touches[0].clientY;
+        sDy = 0;
+        sDragging = true;
+        sheet.style.transition = "none";
+      }, { passive: true });
+      sheet.addEventListener("touchmove", (e) => {
+        if (!sDragging) return;
+        sDy = Math.max(0, e.touches[0].clientY - sStartY);
+        sheet.style.transform = `translateY(${sDy}px)`;
+      }, { passive: true });
+      const endSheetDrag = () => {
+        if (!sDragging) return;
+        sDragging = false;
+        sheet.style.transition = "";
+        sheet.style.transform = "";
+        if (sDy > 65) sheet.closest(".sheet-mask")?.classList.remove("open");
+        sDy = 0;
+      };
+      sheet.addEventListener("touchend", endSheetDrag);
+      sheet.addEventListener("touchcancel", endSheetDrag);
+    });
+
+    // Episodes sheet
+    let epDesc = false;
+    let epRangeIdx = 0;
+    const EP_PAGE = 30;
+
+    function renderEpSheet() {
+      const total = state.episodes.length;
+      if (!total) return;
+      document.getElementById("epSheetTitle").textContent = `${state.series.title}（共${total}集）`;
+      document.getElementById("epSortBtn").textContent = epDesc ? "正序" : "倒序";
+
+      const rangesEl = document.getElementById("epRanges");
+      rangesEl.innerHTML = "";
+      const numPages = Math.ceil(total / EP_PAGE);
+      if (numPages > 1) {
+        for (let p = 0; p < numPages; p++) {
+          const start = p * EP_PAGE + 1;
+          const end = Math.min(total, (p + 1) * EP_PAGE);
+          const rBtn = document.createElement("button");
+          rBtn.className = "ep-range-btn" + (p === epRangeIdx ? " active" : "");
+          rBtn.textContent = `${start}-${end}`;
+          rBtn.onclick = () => { epRangeIdx = p; renderEpSheet(); };
+          rangesEl.appendChild(rBtn);
+        }
+      }
+
+      const grid = document.getElementById("epGrid");
+      grid.innerHTML = "";
+      const startIdx = numPages > 1 ? epRangeIdx * EP_PAGE : 0;
+      const endIdx = numPages > 1 ? Math.min(total, (epRangeIdx + 1) * EP_PAGE) : total;
+      const indices = [];
+      for (let i = startIdx; i < endIdx; i++) indices.push(i);
+      if (epDesc) indices.reverse();
+
+      indices.forEach(i => {
+        const ep = state.episodes[i];
+        const btn = document.createElement("button");
+        btn.className = "ep-item" + (i === state.epIdx ? " active" : "");
+        btn.textContent = ep.index || (i + 1);
+        btn.onclick = () => {
+          state.userInteracted = true;
+          setSwipeMode("episode");
+          closeSheet("epSheet");
+          playEpisode(i);
+        };
+        grid.appendChild(btn);
+      });
+      requestAnimationFrame(() => {
+        rangesEl.querySelector(".ep-range-btn.active")?.scrollIntoView({ block: "nearest", inline: "center" });
+        grid.querySelector(".ep-item.active")?.scrollIntoView({ block: "center", inline: "nearest" });
+      });
+    }
+
+    function openEpSheet() {
+      if (!state.episodes.length) return;
+      epRangeIdx = Math.floor(state.epIdx / EP_PAGE);
+      renderEpSheet();
+      openSheet("epSheet");
+    }
+
+    document.getElementById("btnEpisodes").addEventListener("click", openEpSheet);
+    document.getElementById("epBadge").addEventListener("click", openEpSheet);
+    document.getElementById("epSortBtn").addEventListener("click", () => { epDesc = !epDesc; renderEpSheet(); });
+    document.getElementById("epPrevQuick").addEventListener("click", () => {
+      if (state.epIdx <= 0) { toast("已经是第1集了"); return; }
+      state.userInteracted = true;
+      closeSheet("epSheet");
+      playEpisode(state.epIdx - 1);
+    });
+
+    // Search + Suggest + Pagination
+    let searchKw = "", searchCursor = 0, searchItems = [];
+    document.getElementById("btnSearch").addEventListener("click", () => {
+      openSheet("searchSheet");
+      setTimeout(() => document.getElementById("searchInput").focus(), 140);
+    });
+    let suggestTimer = 0;
+    document.getElementById("searchInput").addEventListener("input", () => {
+      clearTimeout(suggestTimer);
+      const kw = document.getElementById("searchInput").value.trim();
+      const sugEl = document.getElementById("suggestList");
+      if (!kw) { sugEl.innerHTML = ""; return; }
+      suggestTimer = setTimeout(async () => {
+        try {
+          const list = await api("SearchSuggest", [kw]);
+          sugEl.innerHTML = "";
+          (list || []).slice(0, 5).forEach(s => {
+            const div = document.createElement("div");
+            div.className = "suggest-item";
+            div.textContent = s.word;
+            div.onclick = () => {
+              document.getElementById("searchInput").value = s.word;
+              sugEl.innerHTML = "";
+              doSearch(false);
+            };
+            sugEl.appendChild(div);
+          });
+        } catch (_) {}
+      }, 220);
+    });
+    async function doSearch(loadMore = false) {
+      const kw = document.getElementById("searchInput").value.trim();
+      if (!kw) return;
+      document.getElementById("suggestList").innerHTML = "";
+      const list = document.getElementById("searchList");
+      if (!loadMore) {
+        searchKw = kw;
+        searchCursor = 0;
+        searchItems = [];
+        list.innerHTML = "<div style='opacity:.6;padding:20px;text-align:center'>搜索中...</div>";
+      }
+      try {
+        const res = await api("Search", [searchKw, searchCursor]);
+        const items = (res && res.items) || [];
+        searchCursor = res.cursor || 0;
+        searchItems.push(...items);
+        renderDramaList(list, searchItems, "searchSheet", false, res.hasMore ? () => doSearch(true) : null);
+      } catch (e) {
+        list.innerHTML = `<div style='opacity:.6;padding:20px;text-align:center'>搜索失败: ${e.message}</div>`;
+      }
+    }
+    document.getElementById("searchGo").addEventListener("click", () => doSearch(false));
+    document.getElementById("searchInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doSearch(false);
+    });
+
+    // Rank & Category sheet
+    let rankCats = [], rankSubs = [], rankId = "ranklist_hot_sc", rankFilter = "", rankCursor = 0, rankItems = [];
+    function renderRankFilters(sub) {
+      const filtersEl = document.getElementById("rankFilters");
+      filtersEl.innerHTML = "";
+      const opts = [];
+      ((sub && sub.panel) || []).forEach(g => {
+        (g.options || []).forEach(o => opts.push(o));
+      });
+      if (!opts.length) return;
+      opts.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "lib-tab" + ((opt.id === rankFilter || (idx === 0 && !rankFilter)) ? " active" : "");
+        btn.textContent = opt.name;
+        btn.onclick = () => {
+          filtersEl.querySelectorAll(".lib-tab").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          rankFilter = opt.id;
+          loadRank(false);
+        };
+        filtersEl.appendChild(btn);
+      });
+    }
+    function renderRankSubs(subs) {
+      rankSubs = subs && subs.length ? subs : [{ id: "ranklist_hot_sc", name: "推荐榜" }];
+      const tabsEl = document.getElementById("rankTabs");
+      tabsEl.innerHTML = "";
+      rankSubs.forEach((sub, i) => {
+        const btn = document.createElement("button");
+        btn.className = "lib-tab" + (i === 0 ? " active" : "");
+        btn.textContent = sub.name;
+        btn.onclick = () => {
+          tabsEl.querySelectorAll(".lib-tab").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          rankId = sub.id;
+          rankFilter = "";
+          renderRankFilters(sub);
+          loadRank(false);
+        };
+        tabsEl.appendChild(btn);
+      });
+      rankId = rankSubs[0].id;
+      rankFilter = "";
+      renderRankFilters(rankSubs[0]);
+    }
+    async function loadRank(loadMore = false) {
+      const list = document.getElementById("rankList");
+      if (!loadMore) {
+        rankCursor = 0;
+        rankItems = [];
+        list.innerHTML = "<div style='opacity:.6;padding:20px;text-align:center'>加载榜单中...</div>";
+      }
+      try {
+        const res = await api("Rank", [rankId, rankFilter, rankCursor]);
+        const items = (res && res.items) || [];
+        rankCursor = res.cursor || 0;
+        rankItems.push(...items);
+        renderDramaList(list, rankItems, "rankSheet", false, res.hasMore ? () => loadRank(true) : null);
+      } catch (e) {
+        list.innerHTML = `<div style='opacity:.6;padding:20px;text-align:center'>加载失败: ${e.message}</div>`;
+      }
+    }
+    document.getElementById("btnRank").addEventListener("click", async () => {
+      openSheet("rankSheet");
+      if (!rankCats.length) {
+        try {
+          const panel = await api("RankPanel", []);
+          rankCats = (panel || []).filter(c => c.subs && c.subs.length);
+          if (!rankCats.length) rankCats = [{ name: "全部", subs: [{ id: "ranklist_hot_sc", name: "推荐榜" }] }];
+          const catsEl = document.getElementById("rankCats");
+          catsEl.innerHTML = "";
+          rankCats.forEach((cat, i) => {
+            const btn = document.createElement("button");
+            btn.className = "lib-tab" + (i === 0 ? " active" : "");
+            btn.textContent = cat.name;
+            btn.onclick = () => {
+              catsEl.querySelectorAll(".lib-tab").forEach(b => b.classList.remove("active"));
+              btn.classList.add("active");
+              renderRankSubs(cat.subs);
+              loadRank(false);
+            };
+            catsEl.appendChild(btn);
+          });
+          renderRankSubs(rankCats[0].subs);
+        } catch (_) {}
+      }
+      if (!rankItems.length) loadRank(false);
+    });
+
+    // Library
+    function renderLibrary() {
+      const list = document.getElementById("libList");
+      const favs = Object.values(state.favorites).sort((a, b) => b.updatedAt - a.updatedAt);
+      const hist = Object.values(state.history).sort((a, b) => b.updatedAt - a.updatedAt);
+      let items = [];
+      if (state.libTab === "fav") {
+        items = favs.map(x => ({ ...x, _tag: "★ 收藏" }));
+      } else if (state.libTab === "hist") {
+        items = hist.map(x => ({ ...x, _tag: "历史" }));
+      } else {
+        const seen = new Set();
+        favs.forEach(x => { seen.add(x.id); items.push({ ...x, _tag: "★ 收藏" }); });
+        hist.forEach(x => { if (!seen.has(x.id)) items.push({ ...x, _tag: "历史" }); });
+      }
+      renderDramaList(list, items, "libSheet", true);
+    }
+    document.getElementById("btnLibrary").addEventListener("click", () => {
+      renderLibrary();
+      openSheet("libSheet");
+    });
+    document.querySelectorAll(".lib-tab[data-lib]").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".lib-tab[data-lib]").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        state.libTab = tab.dataset.lib;
+        renderLibrary();
+      });
+    });
+    document.getElementById("btnClearHist").addEventListener("click", () => {
+      state.history = {};
+      localStorage.setItem("hg_hist", "{}");
+      renderLibrary();
+      toast("已清空观看历史");
+    });
+
+    function escHtml(s) {
+      return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function renderDramaList(container, items, sheetId, isLocal = false, onLoadMore = null) {
+      if (!items.length) {
+        container.innerHTML = "<div style='opacity:.55;padding:28px;text-align:center'>暂无内容</div>";
+        return;
+      }
+      container.innerHTML = "";
+      items.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "drama-card";
+        card.innerHTML = `
+          <img class="drama-cover" src="${escHtml(item.cover)}" loading="lazy" />
+          <div class="drama-meta">
+            <div class="drama-name">${escHtml(item.title)}</div>
+            <div class="drama-sub">${item._tag ? escHtml(item._tag) + " · " : ""}${item.episodeCount || 0}集 ${item.heat ? "· " + escHtml(item.heat) : ""} ${isLocal ? "· 看到第" + ((item.epIdx || 0) + 1) + "集" : ""}</div>
+            <div class="drama-desc">${escHtml(item.intro)}</div>
+          </div>
+        `;
+        card.onclick = async () => {
+          state.userInteracted = true;
+          setSwipeMode("episode");
+          closeSheet(sheetId);
+          toast("加载剧集中...");
+          const saved = state.history[item.id];
+          const startIdx = isLocal ? (item.epIdx || 0) : ((saved && saved.epIdx) || 0);
+          const resumeSec = isLocal ? (item.posSec || 0) : ((saved && saved.posSec) || 0);
+          await openSeries(item, [], startIdx, resumeSec);
+        };
+        container.appendChild(card);
+      });
+      if (onLoadMore) {
+        const more = document.createElement("button");
+        more.className = "load-more-btn";
+        more.textContent = "加载更多";
+        more.onclick = () => { more.textContent = "加载中..."; onLoadMore(); };
+        container.appendChild(more);
+      }
+    }
+
+    // Flush current progress when backgrounding or closing PWA/tab
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && player && !isNaN(player.currentTime)) {
+        saveHistory(player.currentTime);
+      }
+    });
+    window.addEventListener("pagehide", () => {
+      if (player && !isNaN(player.currentTime)) {
+        saveHistory(player.currentTime);
+      }
+    });
+
+    // Boot (support ?s=seriesId&ep=1 direct share link; otherwise start fresh random feed)
+    async function boot() {
+      const params = new URLSearchParams(location.search);
+      const sid = params.get("s");
+      const hasEpParam = params.has("ep");
+      const epParam = parseInt(params.get("ep") || "1", 10);
+      if (sid) {
+        try {
+          setSwipeMode("episode");
+          const saved = state.history[sid];
+          const startIdx = hasEpParam ? Math.max(0, epParam - 1) : ((saved && saved.epIdx) || 0);
+          const resumeSec = hasEpParam ? 0 : ((saved && saved.posSec) || 0);
+          await openSeries({ id: sid, title: (saved && saved.title) || "加载中...", cover: saved && saved.cover }, [], startIdx, resumeSec);
+          loadFeed(false);
+          return;
+        } catch (e) {
+          if (String(e.message).includes("密码")) return;
+        }
+      }
+      const last = Object.values(state.history).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+      if (last && last.id) markFeedSeen(last.id);
+      setSwipeMode("series");
+      loadFeed(true);
+    }
+    if ("serviceWorker" in navigator) {
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!hadController || refreshing) return;
+        refreshing = true;
+        location.reload();
+      });
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
+        reg.update().catch(() => {});
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) reg.update().catch(() => {});
+        });
+      }).catch(() => {});
+    }
+    boot();
+  </script>
+</body>
+</html>

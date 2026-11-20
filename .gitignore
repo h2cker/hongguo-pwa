@@ -1,0 +1,9 @@
+.DS_Store
+ShortDramaCat
+data/
+nginx.cloud.conf
+v5-proxy/classes/
+*.class
+*.raw
+*.tmp.mp4
+.env
