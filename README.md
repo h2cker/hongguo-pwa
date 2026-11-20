@@ -1,8 +1,35 @@
 # 红果短剧 iOS PWA (`hongguo-ios-pwa`)
 
-专为 **iPhone / iPad Safari & PWA** 打造的**红果短剧**局域网自建竖屏播放器（无广告、免登录、支持 Docker 一键部署）。配合本地 `v5-proxy` 代理实现加密流解密、`ffmpeg +faststart` 重封装与 `HTTP 206` 分片续传，在家庭 NAS / Mac / Linux 上一条命令即可流畅追剧。
+专为 **iPhone / iPad Safari & PWA** 打造的**红果短剧**局域网自建竖屏播放器（无广告、免登录、支持 Docker 一键无脑部署）。在家里电脑 / NAS 上跑起来，手机连同一个 Wi-Fi 就能直接刷剧。
 
-> **适用场景与检索关键词**：红果短剧、红果短剧 iOS、红果短剧 iPhone 版、红果短剧网页版 / Safari PWA、红果短剧 NAS 自建、红果短剧 Docker 一键部署、无广告竖屏短剧播放器、`hongguo-shortdrama`、`hongguo ios`、`short drama pwa`、`self-hosted short drama`、`http 206 range proxy`、`ffmpeg faststart decrypt`。
+> **检索关键词**：红果短剧、红果短剧 iOS、红果短剧 iPhone 版、红果短剧网页版 / Safari PWA、红果短剧 NAS 自建、红果短剧 Docker 一键部署、无广告竖屏短剧播放器、`hongguo-shortdrama`、`hongguo ios`、`short drama pwa`、`self-hosted short drama`、`http 206 range proxy`、`ffmpeg faststart decrypt`。
+
+---
+
+## 🚀 一分钟无脑一键启动（不用懂技术）
+
+唯一前提：电脑或 NAS 上已经装好并打开了 **Docker**（Mac / Windows 装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)，群晖/飞牛/威联通/Linux 装 Docker Compose）。
+
+### 方式 A：Mac / Linux / NAS（复制下面一整行，粘贴回车即可）
+
+```bash
+git clone https://github.com/h2cker/hongguo-ios-pwa.git && cd hongguo-ios-pwa && bash start.sh
+```
+
+> 脚本会自动完成所有事：识别你的 CPU 架构（Intel/AMD/Apple Silicon 均可）-> 自动下载所需组件（内置国内镜像兜底）-> 构建启动服务 -> 检查页面就绪 -> 直接告诉你手机访问地址！
+
+### 方式 B：Windows 电脑（双击就行）
+
+1. 点击页面右上角绿色按钮 **`Code` -> `Download ZIP`** 下载并解压（或者 `git clone`）。
+2. 确保 **Docker Desktop** 已打开。
+3. **直接双击运行文件夹里的 `start.bat`**，等待片刻会自动弹出网页。
+
+### 手机怎么看？
+1. 脚本跑完后会在屏幕上打印一个 **局域网地址**（例如 `http://192.168.1.100:9588`）。
+2. 确保 iPhone 和电脑/NAS 连在**同一个 Wi-Fi**，用 **iPhone Safari** 打开这个地址。
+3. 点击底部分享按钮 -> **「添加到主屏幕」**，桌面上就会多出一个像原生 App 一样的全屏红果短剧图标！
+
+---
 
 ## 功能特性
 
@@ -11,7 +38,7 @@
   - 自动过滤 iOS 不支持的 `bytevc2 / h266 / vvc` 编码；
   - 服务端异步预下载并用 `ffmpeg` 解密及 `+faststart` 重封装；
   - 支持标准 `HTTP 206` Byte-Range 拖拽与秒播，内置热点剧集/搜索/播放信息缓存。
-- **真正一键本地部署**：`start.sh` 会自动识别 CPU 架构（`x86_64` / `arm64`）并拉取上游 `ShortDramaCat` 二进制，无需公网服务器或登录鉴权，适合家庭局域网自部署。
+- **纯局域网开箱即用**：无需公网服务器、无需配置域名或登录鉴权，适合家庭网络自部署。
 
 ---
 
@@ -40,27 +67,7 @@ iPhone Safari / PWA
 - `shortdramacat` 服务使用上游项目 [kiroswu/hongguo-shortdramabox](https://github.com/kiroswu/hongguo-shortdramabox) 发布的 Linux 独立二进制（`v0.9.0`）：
   - `x86_64 / amd64`：`ShortDramaCat-v0.9.0-x86_64-linux`
   - `aarch64 / arm64`（含 Apple Silicon Mac Docker、树莓派、ARM NAS）：`ShortDramaCat-v0.9.0-aarch64-linux`
-- 本仓库不直接打包上游二进制文件，`start.sh` 会在首次运行时按宿主机 Docker 架构自动下载并重命名为 `./ShortDramaCat`。
-
----
-
-## 一键本地启动（人类用户）
-
-### 1. 环境要求
-- Docker + Docker Compose（macOS / Windows 安装 Docker Desktop，Linux / NAS 安装 Docker Engine）
-
-### 2. 克隆并启动
-```bash
-git clone https://github.com/h2cker/hongguo-ios-pwa.git
-cd hongguo-ios-pwa
-chmod +x start.sh
-./start.sh
-```
-
-启动完成后：
-- 电脑访问：`http://127.0.0.1:9588`
-- 手机访问：`http://<你的电脑或NAS局域网IP>:9588`
-- iPhone 推荐用 **Safari** 打开后点击底部分享图标 -> **添加到主屏幕**，即可全屏 PWA 观看。
+- 本仓库不直接打包上游二进制文件，`start.sh` / `start.bat` 会在首次运行时自动按架构下载并准备就绪。
 
 ---
 
@@ -70,30 +77,17 @@ chmod +x start.sh
 
 ### Step 1: 检查环境依赖
 ```bash
-docker --version && docker compose version
+docker --version && docker compose version && docker info >/dev/null
 ```
-- 若未安装 Docker，请提示用户先安装 Docker Desktop（macOS/Windows）或 Docker Engine + Compose 插件（Linux/NAS），然后停止。
+- 若未安装或未启动 Docker，请提示用户先安装并打开 Docker Desktop（macOS/Windows）或 Docker Engine（Linux/NAS），然后停止。
 
-### Step 2: 识别容器架构并准备 `ShortDramaCat` 二进制
-检查当前目录下是否存在 `./ShortDramaCat`。若不存在，识别 Docker 运行架构并从上游 Release 下载对应二进制：
+### Step 2: 一键拉起服务（自动识别架构、镜像兜底下载与端口校验）
 ```bash
-ARCH="$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)"
-# x86_64 / amd64 -> ShortDramaCat-v0.9.0-x86_64-linux
-# aarch64 / arm64 -> ShortDramaCat-v0.9.0-aarch64-linux
+bash start.sh
 ```
-可直接运行 `./start.sh` 自动完成下载与启动；若用户网络访问 GitHub 受限，可先确认代理环境变量（`HTTPS_PROXY`）或手动下载放入 `./ShortDramaCat` 并赋予执行权限 `chmod +x ./ShortDramaCat`。
+`start.sh` 会自动判断 `x86_64` / `arm64` 并下载 `ShortDramaCat`（直连失败自动切换国内 GitHub 镜像），随后执行 `docker compose up -d --build` 并检查 `http://127.0.0.1:9588/` 是否返回 `200`。
 
-### Step 3: 构建并启动全部服务
-```bash
-mkdir -p ./data
-docker compose up -d --build
-```
-等待 3~5 秒后检查容器状态，确保 `shortdramacat`、`shortdramacat-v5`、`shortdramacat-ios` 三个容器均为 `Up`：
-```bash
-docker compose ps
-```
-
-### Step 4: 端到端健康检查（必做）
+### Step 3: 端到端健康检查（必做）
 依次验证首页、搜索接口、播放地址签名接口和 `206` 视频流切片：
 ```bash
 curl -sSf -o /dev/null -w "WEB:%{http_code}\n" http://127.0.0.1:9588/
@@ -103,15 +97,13 @@ curl -sSf -X POST http://127.0.0.1:9588/api/call \
 ```
 如 `WEB:200` 且 `/api/call` 返回 `"ok":true`，再用 Python 或 `curl` 取一集的 `videoId` 调 `PlayInfo` 并对 `/v5media/...` 发 `Range: bytes=0-1023` 请求，确认返回 `HTTP 206`。
 
-### Step 5: 返回访问地址给用户
-获取宿主机局域网 IP（macOS 用 `ipconfig getifaddr en0 || ipconfig getifaddr en1`，Linux 用 `hostname -I | awk '{print $1}'`），向用户输出：
-- 本机地址：`http://127.0.0.1:9588`
-- 局域网/iPhone 访问地址：`http://<LAN_IP>:9588`（提示用 Safari 添加到主屏幕）
+### Step 4: 返回访问地址给用户
+向用户输出 `http://127.0.0.1:9588` 与局域网 IP 地址 `http://<LAN_IP>:9588`（提示用 iPhone Safari 打开并「添加到主屏幕」）。
 
 ### 常见排错
 - **端口 `9588` 或 `9587` 被占用**：修改 `docker-compose.yml` 中对应 `ports` 左侧宿主机端口后重新执行 `docker compose up -d`。
-- **`ShortDramaCat` 报 `exec format error`**：说明下载的二进制架构与 Docker 容器架构不一致，删除 `./ShortDramaCat` 后重新运行 `./start.sh`。
-- **更新代码后手机端仍是旧页面**：`sw.js` 缓存未刷新时，确认已重新构建/重启并刷新 Safari 页面，或在 `sw.js` 递增 `CACHE` 版本号。
+- **`ShortDramaCat` 报 `exec format error`**：说明下载的二进制架构与 Docker 容器架构不一致，删除 `./ShortDramaCat` 后重新运行 `bash start.sh`。
+- **更新代码后手机端仍是旧页面**：确认已重启并刷新 Safari 页面，或在 `sw.js` 递增 `CACHE` 版本号。
 
 ---
 
