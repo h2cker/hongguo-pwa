@@ -1,6 +1,8 @@
-# ShortDramaCat iOS PWA
+# 红果短剧 iOS PWA (`hongguo-ios-pwa`)
 
-专为 **iPhone / iPad Safari & PWA** 打造的局域网竖屏短剧播放器，配合本地代理实现视频流解密、`+faststart` 重封装与 `206` 分片续传，在家庭 NAS / Mac / Linux 上一条命令即可部署观看。
+专为 **iPhone / iPad Safari & PWA** 打造的**红果短剧**局域网自建竖屏播放器（无广告、免登录、支持 Docker 一键部署）。配合本地 `v5-proxy` 代理实现加密流解密、`ffmpeg +faststart` 重封装与 `HTTP 206` 分片续传，在家庭 NAS / Mac / Linux 上一条命令即可流畅追剧。
+
+> **适用场景与检索关键词**：红果短剧、红果短剧 iOS、红果短剧 iPhone 版、红果短剧网页版 / Safari PWA、红果短剧 NAS 自建、红果短剧 Docker 一键部署、无广告竖屏短剧播放器、`hongguo-shortdrama`、`hongguo ios`、`short drama pwa`、`self-hosted short drama`、`http 206 range proxy`、`ffmpeg faststart decrypt`。
 
 ## 功能特性
 
@@ -49,8 +51,8 @@ iPhone Safari / PWA
 
 ### 2. 克隆并启动
 ```bash
-git clone https://github.com/h2cker/shortdramacat-ios.git
-cd shortdramacat-ios
+git clone https://github.com/h2cker/hongguo-ios-pwa.git
+cd hongguo-ios-pwa
 chmod +x start.sh
 ./start.sh
 ```
@@ -64,7 +66,7 @@ chmod +x start.sh
 
 ## 🤖 AI 自动部署指南 (For AI Agents)
 
-> 本节专为 AI Coding Agent（如 Antigravity、Claude Code、Cursor、Codex 等）编写。当你代表用户部署本项目时，请严格按以下步骤执行并验证。
+> 本节与根目录 [AGENTS.md](./AGENTS.md) 专为 AI Coding Agent（如 Antigravity、Claude Code、Cursor、Codex 等）编写。当你代表用户部署本项目时，请严格按以下步骤执行并验证。
 
 ### Step 1: 检查环境依赖
 ```bash
@@ -92,7 +94,7 @@ docker compose ps
 ```
 
 ### Step 4: 端到端健康检查（必做）
-依次验证首页、推荐流接口、播放地址签名接口和 `206` 视频流切片：
+依次验证首页、搜索接口、播放地址签名接口和 `206` 视频流切片：
 ```bash
 curl -sSf -o /dev/null -w "WEB:%{http_code}\n" http://127.0.0.1:9588/
 curl -sSf -X POST http://127.0.0.1:9588/api/call \
