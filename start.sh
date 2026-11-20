@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+UPSTREAM_VER="v0.9.0"
+UPSTREAM_BASE="https://github.com/kiroswu/hongguo-shortdramabox/releases/download/${UPSTREAM_VER}"
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "[错误] 未检测到 docker，请先安装 Docker Desktop 或 Docker Engine。"
   exit 1
@@ -14,11 +17,34 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 if [ ! -f "./ShortDramaCat" ]; then
-  echo "[提示] 当前目录缺少 ShortDramaCat 可执行文件（Linux amd64/arm64 二进制）。"
-  echo "请从上游项目下载对应架构的 ShortDramaCat 放到项目根目录："
-  echo "  https://github.com/kiroswu/hongguo-shortdramabox"
-  echo "放置后重新运行 ./start.sh 即可一键启动。"
-  exit 1
+  ARCH="$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)"
+  case "$ARCH" in
+    aarch64|arm64)
+      ASSET="ShortDramaCat-${UPSTREAM_VER}-aarch64-linux"
+      ;;
+    x86_64|amd64)
+      ASSET="ShortDramaCat-${UPSTREAM_VER}-x86_64-linux"
+      ;;
+    *)
+      echo "[错误] 不支持的架构: $ARCH（仅支持 x86_64 / aarch64）。"
+      exit 1
+      ;;
+  esac
+
+  URL="${UPSTREAM_BASE}/${ASSET}"
+  echo "[0/2] 未检测到 ./ShortDramaCat，正在为架构 ($ARCH) 自动下载上游二进制..."
+  echo "      来源: $URL"
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "[错误] 未安装 curl，请手动下载后保存为 ./ShortDramaCat：$URL"
+    exit 1
+  fi
+  if ! curl -fSL --retry 2 --connect-timeout 15 -o ./ShortDramaCat.tmp "$URL"; then
+    rm -f ./ShortDramaCat.tmp
+    echo "[错误] 下载失败（如国内网络访问 GitHub 受限，可配置代理后重试，或手动下载放到 ./ShortDramaCat）："
+    echo "       $URL"
+    exit 1
+  fi
+  mv ./ShortDramaCat.tmp ./ShortDramaCat
 fi
 
 chmod +x ./ShortDramaCat
