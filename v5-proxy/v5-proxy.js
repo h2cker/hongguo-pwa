@@ -121,7 +121,7 @@ function asObject(val) {
   return null;
 }
 
-function firstUrl(row, seedBuf) {
+function allUrls(row, seedBuf) {
   const candidates = [];
   if (typeof row.main_url === 'string' && row.main_url) candidates.push(row.main_url);
   if (typeof row.backup_url === 'string' && row.backup_url) candidates.push(row.backup_url);
@@ -131,18 +131,28 @@ function firstUrl(row, seedBuf) {
       if (typeof u === 'string' && u) candidates.push(u);
     }
   }
+  const out = [];
+  const seen = new Set();
   for (const val of candidates) {
-    if (val.startsWith('http')) return val;
-    if (seedBuf) {
+    let resolved = '';
+    if (val.startsWith('http')) {
+      resolved = val;
+    } else if (seedBuf) {
       const decrypted = decryptUrl(val, seedBuf);
-      if (decrypted.startsWith('http')) return decrypted;
+      if (decrypted.startsWith('http')) resolved = decrypted;
     }
-    try {
-      const dec = Buffer.from(val, 'base64').toString('utf8').trim();
-      if (dec.startsWith('http')) return dec;
-    } catch (_) {}
+    if (!resolved) {
+      try {
+        const dec = Buffer.from(val, 'base64').toString('utf8').trim();
+        if (dec.startsWith('http')) resolved = dec;
+      } catch (_) {}
+    }
+    if (resolved && !seen.has(resolved)) {
+      seen.add(resolved);
+      out.push(resolved);
+    }
   }
-  return '';
+  return out;
 }
 
 function httpGetBuffer(url, headers = {}, redirects = 4, timeoutMs = 20000) {
@@ -226,9 +236,8 @@ async function resolvePlayInfoV5(videoId, preferredQuality = '') {
         skippedBytevc2++;
         continue;
       }
-      let url = firstUrl(row, seedBuf);
-      if (!url) continue;
-      if (!url.startsWith('http')) continue;
+      const urls = allUrls(row, seedBuf);
+      if (!urls.length) continue;
 
       const spade = row.spade_a || (row.encrypt_info && row.encrypt_info.spade_a) || '';
       const keyHex = spade ? deriveKeyHex(spade) : '';
@@ -242,7 +251,7 @@ async function resolvePlayInfoV5(videoId, preferredQuality = '') {
 
       const prev = byName.get(name);
       if (!prev || score > prev.score) {
-        byName.set(name, { name, num, url, keyHex, width, height, score });
+        byName.set(name, { name, num, url: urls[0], urls, keyHex, width, height, score });
       }
     }
   }
@@ -266,7 +275,7 @@ async function resolvePlayInfoV5(videoId, preferredQuality = '') {
 
   const qualities = sorted.map((q) => {
     const token = `${videoId}_${q.name}`;
-    mediaTokens.set(token, { url: q.url, keyHex: q.keyHex, ts: Date.now() });
+    mediaTokens.set(token, { url: q.url, urls: q.urls, keyHex: q.keyHex, ts: Date.now() });
     if (mediaTokens.size > 400) {
       const oldest = mediaTokens.keys().next().value;
       mediaTokens.delete(oldest);
@@ -287,6 +296,149 @@ async function resolvePlayInfoV5(videoId, preferredQuality = '') {
   return result;
 }
 
+function httpRangeProbe(url, headers = {}, redirects = 4, timeoutMs = 3500) {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.startsWith('https:');
+    const mod = isHttps ? https : http;
+    const req = mod.get(url, {
+      headers: { ...headers, Range: 'bytes=0-0' },
+      timeout: timeoutMs,
+      agent: isHttps ? httpsAgent : httpAgent,
+    }, (res) => {
+      res.resume();
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        return resolve(httpRangeProbe(res.headers.location, headers, redirects - 1, timeoutMs));
+      }
+      if (res.statusCode !== 206) {
+        return reject(new Error('HTTP ' + res.statusCode));
+      }
+      const cr = String(res.headers['content-range'] || '');
+      const m = /\/(\d+)$/.exec(cr);
+      const len = m ? parseInt(m[1], 10) : 0;
+      resolve({ url, len, acceptRanges: 'bytes' });
+    });
+    req.on('timeout', () => req.destroy(new Error('probe timeout')));
+    req.on('error', reject);
+  });
+}
+
+function httpDownloadRangeChunk(url, headers, start, end, fd, redirects = 4, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.startsWith('https:');
+    const mod = isHttps ? https : http;
+    const req = mod.get(url, {
+      headers: { ...headers, Range: `bytes=${start}-${end}` },
+      timeout: timeoutMs,
+      agent: isHttps ? httpsAgent : httpAgent,
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        return resolve(httpDownloadRangeChunk(res.headers.location, headers, start, end, fd, redirects - 1, timeoutMs));
+      }
+      if (res.statusCode !== 206) {
+        res.resume();
+        return reject(new Error('RANGE_STATUS_' + res.statusCode));
+      }
+      const expected = end - start + 1;
+      let offset = start;
+      let received = 0;
+      const startedAt = Date.now();
+      const speedTimer = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= 6000 && received < elapsed * 40) {
+          clearInterval(speedTimer);
+          req.destroy(new Error('chunk too slow'));
+        }
+      }, 2000);
+      const hardTimer = setTimeout(() => {
+        clearInterval(speedTimer);
+        req.destroy(new Error('chunk slow timeout'));
+      }, 25000);
+      res.on('data', (chunk) => {
+        try {
+          fs.writeSync(fd, chunk, 0, chunk.length, offset);
+          offset += chunk.length;
+          received += chunk.length;
+        } catch (err) {
+          clearInterval(speedTimer);
+          clearTimeout(hardTimer);
+          req.destroy(err);
+        }
+      });
+      res.on('end', () => {
+        clearInterval(speedTimer);
+        clearTimeout(hardTimer);
+        if (received !== expected) return reject(new Error(`short chunk ${received}/${expected}`));
+        resolve();
+      });
+      res.on('error', (err) => {
+        clearInterval(speedTimer);
+        clearTimeout(hardTimer);
+        reject(err);
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('chunk timeout')));
+    req.on('error', reject);
+  });
+}
+
+async function httpDownloadFast(urls, destPath, headers = {}) {
+  const list = Array.isArray(urls) && urls.length ? urls : [urls];
+  let probe = null;
+  let startIdx = 0;
+  for (let i = 0; i < list.length; i++) {
+    try {
+      probe = await httpRangeProbe(list[i], headers, 4, 3500);
+      startIdx = i;
+      break;
+    } catch (_) {}
+  }
+
+  if (probe && probe.acceptRanges === 'bytes' && probe.len >= 3145728) {
+    const parts = probe.len >= 12582912 ? 3 : 2;
+    const chunkSize = Math.ceil(probe.len / parts);
+    const fd = fs.openSync(destPath, 'w');
+    try {
+      const jobs = [];
+      for (let i = 0; i < parts; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(probe.len - 1, (i + 1) * chunkSize - 1);
+        if (start > end) break;
+        jobs.push((async () => {
+          let lastErr;
+          for (let attempt = 0; attempt <= 2; attempt++) {
+            const u = list[(startIdx + i + attempt) % list.length];
+            try {
+              await httpDownloadRangeChunk(u, headers, start, end, fd);
+              return;
+            } catch (err) {
+              lastErr = err;
+            }
+          }
+          throw lastErr;
+        })());
+      }
+      await Promise.all(jobs);
+      fs.closeSync(fd);
+      return;
+    } catch (_) {
+      try { fs.closeSync(fd); } catch (_) {}
+      try { fs.unlinkSync(destPath); } catch (_) {}
+    }
+  }
+
+  let lastErr;
+  for (let i = 0; i < list.length; i++) {
+    try {
+      await httpDownloadToFile(list[(startIdx + i) % list.length], destPath, headers, 4, 1);
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('download failed');
+}
+
 function httpDownloadToFile(url, destPath, headers = {}, redirects = 4, retries = 1) {
   return new Promise((resolve, reject) => {
     const isHttps = url.startsWith('https:');
@@ -301,13 +453,25 @@ function httpDownloadToFile(url, destPath, headers = {}, redirects = 4, retries 
         return reject(new Error('HTTP ' + res.statusCode));
       }
       const ws = fs.createWriteStream(destPath);
+      let received = 0;
+      const startedAt = Date.now();
+      const speedTimer = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= 6000 && received < elapsed * 40) {
+          clearInterval(speedTimer);
+          req.destroy(new Error('download too slow'));
+        }
+      }, 2000);
+      res.on('data', (c) => { received += c.length; });
       res.pipe(ws);
-      ws.on('finish', () => ws.close(resolve));
+      ws.on('finish', () => { clearInterval(speedTimer); ws.close(resolve); });
       ws.on('error', (err) => {
+        clearInterval(speedTimer);
         try { fs.unlinkSync(destPath); } catch (_) {}
         reject(err);
       });
       res.on('error', (err) => {
+        clearInterval(speedTimer);
         ws.destroy();
         try { fs.unlinkSync(destPath); } catch (_) {}
         if (retries > 0) return resolve(httpDownloadToFile(url, destPath, headers, redirects, retries - 1));
@@ -362,7 +526,7 @@ async function ensureMediaFile(token, entry) {
     const rawPath = path.join(CACHE_DIR, `${token}.raw`);
     const tmpMp4 = path.join(CACHE_DIR, `${token}.tmp.mp4`);
     try {
-      await httpDownloadToFile(entry.url, rawPath, { 'User-Agent': PLAYBACK_UA });
+      await httpDownloadFast(entry.urls || [entry.url], rawPath, { 'User-Agent': PLAYBACK_UA });
       if (entry.keyHex) {
         await ffmpegDecrypt(rawPath, tmpMp4, entry.keyHex);
         fs.renameSync(tmpMp4, mp4Path);
