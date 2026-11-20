@@ -345,11 +345,11 @@ function httpDownloadRangeChunk(url, headers, start, end, fd, redirects = 4, tim
       const startedAt = Date.now();
       const speedTimer = setInterval(() => {
         const elapsed = Date.now() - startedAt;
-        if (elapsed >= 6000 && received < elapsed * 40) {
+        if (elapsed >= 4000 && received < elapsed * 60) {
           clearInterval(speedTimer);
           req.destroy(new Error('chunk too slow'));
         }
-      }, 2000);
+      }, 1500);
       const hardTimer = setTimeout(() => {
         clearInterval(speedTimer);
         req.destroy(new Error('chunk slow timeout'));
@@ -395,7 +395,7 @@ async function httpDownloadFast(urls, destPath, headers = {}) {
   }
 
   if (probe && probe.acceptRanges === 'bytes' && probe.len >= 3145728) {
-    const parts = probe.len >= 12582912 ? 3 : 2;
+    const parts = probe.len >= 8388608 ? 4 : 2;
     const chunkSize = Math.ceil(probe.len / parts);
     const fd = fs.openSync(destPath, 'w');
     try {
@@ -406,7 +406,7 @@ async function httpDownloadFast(urls, destPath, headers = {}) {
         if (start > end) break;
         jobs.push((async () => {
           let lastErr;
-          for (let attempt = 0; attempt <= 2; attempt++) {
+          for (let attempt = 0; attempt <= 1; attempt++) {
             const u = list[(startIdx + i + attempt) % list.length];
             try {
               await httpDownloadRangeChunk(u, headers, start, end, fd);
@@ -457,11 +457,11 @@ function httpDownloadToFile(url, destPath, headers = {}, redirects = 4, retries 
       const startedAt = Date.now();
       const speedTimer = setInterval(() => {
         const elapsed = Date.now() - startedAt;
-        if (elapsed >= 6000 && received < elapsed * 40) {
+        if (elapsed >= 4000 && received < elapsed * 60) {
           clearInterval(speedTimer);
           req.destroy(new Error('download too slow'));
         }
-      }, 2000);
+      }, 1500);
       res.on('data', (c) => { received += c.length; });
       res.pipe(ws);
       ws.on('finish', () => { clearInterval(speedTimer); ws.close(resolve); });
@@ -525,14 +525,19 @@ async function ensureMediaFile(token, entry) {
   const p = (async () => {
     const rawPath = path.join(CACHE_DIR, `${token}.raw`);
     const tmpMp4 = path.join(CACHE_DIR, `${token}.tmp.mp4`);
+    const t0 = Date.now();
     try {
       await httpDownloadFast(entry.urls || [entry.url], rawPath, { 'User-Agent': PLAYBACK_UA });
+      const dlMs = Date.now() - t0;
       if (entry.keyHex) {
         await ffmpegDecrypt(rawPath, tmpMp4, entry.keyHex);
         fs.renameSync(tmpMp4, mp4Path);
       } else {
         fs.renameSync(rawPath, mp4Path);
       }
+      const totalMs = Date.now() - t0;
+      const sz = fs.statSync(mp4Path).size;
+      console.log(`[v5media] ${token} ${sz}B dl=${dlMs}ms total=${totalMs}ms enc=${Boolean(entry.keyHex)}`);
       pruneDiskCache();
       return mp4Path;
     } catch (err) {
