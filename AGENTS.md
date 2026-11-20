@@ -5,14 +5,15 @@ Keywords: `红果短剧`, `hongguo`, `short-drama`, `ios-pwa`, `safari`, `self-h
 
 ## Quick Deploy Workflow for AI Agents
 
-1. Verify Docker & Compose exist:
+1. Verify Docker & Compose are installed and running:
    ```bash
-   docker --version && docker compose version
+   docker --version && docker compose version && docker info >/dev/null
    ```
-2. Run the one-click launcher (auto-detects `x86_64`/`arm64`, downloads matching `ShortDramaCat` binary if absent, builds `v5-proxy` and `shortdramacat`, starts `ios-web` on port `9588`):
+2. Run the one-click launcher (auto-detects `x86_64`/`arm64`, downloads matching `ShortDramaCat` binary with CN mirror fallback if absent, builds `v5-proxy` and `shortdramacat`, starts `ios-web` on port `9588`):
    ```bash
-   chmod +x start.sh && ./start.sh
+   bash start.sh
    ```
+   *(On Windows, run `start.bat` instead.)*
 3. Verify all 3 containers (`shortdramacat`, `shortdramacat-v5`, `shortdramacat-ios`) are running:
    ```bash
    docker compose ps
