@@ -1177,6 +1177,9 @@
           getPlayInfo(nextFeed.series.id, nextFeed.episode.videoId).catch(() => { warmInfoKeys.delete(fk); });
         }
       }
+      if (state.episodes.length > 1 && state.epIdx >= state.episodes.length - 2 && state.series) {
+        findNextSeason(state.series).catch(() => {});
+      }
       if (warmInfoKeys.size > 60) warmInfoKeys.clear();
     }
     async function preloadNextEpisode() {
@@ -1261,11 +1264,73 @@
       }
     }
 
+    const nextSeasonCache = new Map();
+    const nextSeasonInFlight = new Map();
+    const CN_NUMS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    const NUM_TO_CN = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+    function parseSeasonMeta(rawTitle, rawSeasonIdx = 0) {
+      let title = String(rawTitle || "").trim();
+      let season = rawSeasonIdx > 0 ? rawSeasonIdx : 0;
+      const m = title.match(/(?:之)?[\s(（【\[]*(?:第([一二三四五六七八九十\d]+)[季部]|[Ss](?:eason)?\s*(\d+))[\s)）】\]]*$/);
+      if (m) {
+        const token = m[1] || m[2] || "";
+        const parsed = /^\d+$/.test(token) ? parseInt(token, 10) : (CN_NUMS[token] || 0);
+        if (parsed > 0 && !season) season = parsed;
+        title = title.slice(0, m.index).trim();
+      }
+      if (!season) season = 1;
+      const normBase = title.replace(/[\s:：·\-—_()（）《》【】\[\]#!！?？,，.。]/g, "").toLowerCase();
+      return { baseTitle: title, normBase, season };
+    }
+    async function findNextSeason(series) {
+      if (!series || !series.id || !series.title) return null;
+      const sid = String(series.id);
+      if (nextSeasonCache.has(sid)) return nextSeasonCache.get(sid);
+      if (nextSeasonInFlight.has(sid)) return nextSeasonInFlight.get(sid);
+      const p = (async () => {
+        const cur = parseSeasonMeta(series.title, series.seasonIndex || 0);
+        if (!cur.normBase || !cur.baseTitle) { nextSeasonCache.set(sid, null); return null; }
+        const targetSeason = cur.season + 1;
+        const pickMatch = (items) => {
+          for (const it of items) {
+            if (!it || !it.id || String(it.id) === sid) continue;
+            const cand = parseSeasonMeta(it.title, it.seasonIndex || 0);
+            if (cand.normBase === cur.normBase && cand.season === targetSeason) return it;
+          }
+          return null;
+        };
+        try {
+          const r1 = await api("Search", [cur.baseTitle, "0"]);
+          const list1 = Array.isArray(r1) ? r1 : ((r1 && r1.items) || []);
+          let found = pickMatch(list1);
+          if (!found) {
+            const cn = NUM_TO_CN[targetSeason] || String(targetSeason);
+            const r2 = await api("Search", [`${cur.baseTitle}第${cn}季`, "0"]).catch(() => null);
+            const list2 = Array.isArray(r2) ? r2 : ((r2 && r2.items) || []);
+            found = pickMatch(list2);
+          }
+          nextSeasonCache.set(sid, found || null);
+          return found || null;
+        } catch (_) {
+          return null;
+        }
+      })().finally(() => nextSeasonInFlight.delete(sid));
+      nextSeasonInFlight.set(sid, p);
+      return p;
+    }
+
     let playSeq = 0;
     async function playEpisode(epIdx, resumeSec = 0, isRetry = false) {
       if (!state.episodes.length) return;
       if (epIdx < 0) epIdx = 0;
       if (epIdx >= state.episodes.length) {
+        const nextSeason = await findNextSeason(state.series);
+        if (nextSeason) {
+          setSwipeMode("episode");
+          toast(`本季已完结，自动连播《${nextSeason.title}》`);
+          await openSeries(nextSeason, [], 0, 0);
+          return;
+        }
         toast("已是最后一集，切换下一部");
         if (state.feed.length > state.feedIdx + 1) playFeedItem(state.feedIdx + 1);
         return;
@@ -1544,6 +1609,9 @@
           if (nextEp) {
             const nextNum = nextEp.index || (state.epIdx + 2);
             nextHintText.textContent = `即将播放 第${nextNum}集 · ${rem}s`;
+            nextHint.classList.add("show");
+          } else if (state.series && nextSeasonCache.get(String(state.series.id))) {
+            nextHintText.textContent = `即将播放 下一季 · ${rem}s`;
             nextHint.classList.add("show");
           } else if (state.feed.length > state.feedIdx + 1) {
             nextHintText.textContent = `即将播放下一部 · ${rem}s`;
