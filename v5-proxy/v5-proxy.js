@@ -322,20 +322,36 @@ function httpRangeProbe(url, headers = {}, redirects = 4, timeoutMs = 3500) {
   });
 }
 
-function httpDownloadRangeChunk(url, headers, start, end, fd, redirects = 4, timeoutMs = 5000) {
+function httpDownloadRangeChunk(url, headers, start, end, fd, signal, redirects = 4, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(new Error('aborted'));
     const isHttps = url.startsWith('https:');
     const mod = isHttps ? https : http;
-    const req = mod.get(url, {
+    let settled = false;
+    let speedTimer = null;
+    let hardTimer = null;
+    let req = null;
+    const cleanup = () => {
+      if (speedTimer) { clearInterval(speedTimer); speedTimer = null; }
+      if (hardTimer) { clearTimeout(hardTimer); hardTimer = null; }
+      if (signal) signal.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      if (req) req.destroy(new Error('aborted'));
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    req = mod.get(url, {
       headers: { ...headers, Range: `bytes=${start}-${end}` },
       timeout: timeoutMs,
       agent: isHttps ? httpsAgent : httpAgent,
     }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        cleanup();
         res.resume();
-        return resolve(httpDownloadRangeChunk(res.headers.location, headers, start, end, fd, redirects - 1, timeoutMs));
+        return resolve(httpDownloadRangeChunk(res.headers.location, headers, start, end, fd, signal, redirects - 1, timeoutMs));
       }
       if (res.statusCode !== 206) {
+        cleanup();
         res.resume();
         return reject(new Error('RANGE_STATUS_' + res.statusCode));
       }
@@ -343,42 +359,46 @@ function httpDownloadRangeChunk(url, headers, start, end, fd, redirects = 4, tim
       let offset = start;
       let received = 0;
       const startedAt = Date.now();
-      const speedTimer = setInterval(() => {
+      speedTimer = setInterval(() => {
         const elapsed = Date.now() - startedAt;
         if (elapsed >= 4000 && received < elapsed * 60) {
-          clearInterval(speedTimer);
           req.destroy(new Error('chunk too slow'));
         }
       }, 1500);
-      const hardTimer = setTimeout(() => {
-        clearInterval(speedTimer);
+      hardTimer = setTimeout(() => {
         req.destroy(new Error('chunk slow timeout'));
       }, 25000);
       res.on('data', (chunk) => {
+        if (signal && signal.aborted) { req.destroy(new Error('aborted')); return; }
         try {
           fs.writeSync(fd, chunk, 0, chunk.length, offset);
           offset += chunk.length;
           received += chunk.length;
         } catch (err) {
-          clearInterval(speedTimer);
-          clearTimeout(hardTimer);
           req.destroy(err);
         }
       });
       res.on('end', () => {
-        clearInterval(speedTimer);
-        clearTimeout(hardTimer);
+        cleanup();
+        if (settled) return;
+        settled = true;
         if (received !== expected) return reject(new Error(`short chunk ${received}/${expected}`));
         resolve();
       });
       res.on('error', (err) => {
-        clearInterval(speedTimer);
-        clearTimeout(hardTimer);
+        cleanup();
+        if (settled) return;
+        settled = true;
         reject(err);
       });
     });
     req.on('timeout', () => req.destroy(new Error('chunk timeout')));
-    req.on('error', reject);
+    req.on('error', (err) => {
+      cleanup();
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
 }
 
@@ -398,6 +418,7 @@ async function httpDownloadFast(urls, destPath, headers = {}) {
     const parts = probe.len >= 8388608 ? 4 : 2;
     const chunkSize = Math.ceil(probe.len / parts);
     const fd = fs.openSync(destPath, 'w');
+    const ac = new AbortController();
     try {
       const jobs = [];
       for (let i = 0; i < parts; i++) {
@@ -407,14 +428,16 @@ async function httpDownloadFast(urls, destPath, headers = {}) {
         jobs.push((async () => {
           let lastErr;
           for (let attempt = 0; attempt <= 1; attempt++) {
+            if (ac.signal.aborted) throw new Error('aborted');
             const u = list[(startIdx + i + attempt) % list.length];
             try {
-              await httpDownloadRangeChunk(u, headers, start, end, fd);
+              await httpDownloadRangeChunk(u, headers, start, end, fd, ac.signal);
               return;
             } catch (err) {
               lastErr = err;
             }
           }
+          ac.abort();
           throw lastErr;
         })());
       }
@@ -422,6 +445,7 @@ async function httpDownloadFast(urls, destPath, headers = {}) {
       fs.closeSync(fd);
       return;
     } catch (_) {
+      ac.abort();
       try { fs.closeSync(fd); } catch (_) {}
       try { fs.unlinkSync(destPath); } catch (_) {}
     }

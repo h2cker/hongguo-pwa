@@ -862,7 +862,7 @@
       } catch (_) {}
     }
 
-    function buildFeedCursor(rawCursor, seenIds, randomizeOffset = false) {
+    function buildFeedCursor(rawCursor, seenIds, randomizeOffset = false, maxSlots = 40) {
       let cursorObj = null;
       if (typeof rawCursor === "string" && rawCursor.trim()) {
         try {
@@ -892,8 +892,9 @@
       if (randomizeOffset || !cursorObj.offset) {
         const lastKey = "hg_last_offset_" + state.tabType;
         const lastOffset = parseInt(localStorage.getItem(lastKey) || "-1", 10);
-        let nextOffset = Math.floor(Math.random() * 40) * 6;
-        if (nextOffset === lastOffset) nextOffset = (nextOffset + 6) % 240;
+        const slots = Math.max(1, maxSlots);
+        let nextOffset = Math.floor(Math.random() * slots) * 6;
+        if (slots > 1 && nextOffset === lastOffset) nextOffset = (nextOffset + 6) % (slots * 6);
         localStorage.setItem(lastKey, String(nextOffset));
         cursorObj.offset = nextOffset;
         cursorObj.session = "";
@@ -937,9 +938,10 @@
         let items = (res && res.items) || [];
         let fresh = items.filter(isFreshItem);
 
-        // If fewer than 4 genuinely unseen dramas, fetch up to 2 extra random pages
+        // If fewer than 4 genuinely unseen dramas, fetch up to 2 extra random pages (narrow offset if empty)
         for (let extra = 0; extra < 2 && fresh.length < 4; extra++) {
-          const extraCursor = buildFeedCursor(0, seenIds, true);
+          const slots = items.length === 0 ? 8 : 40;
+          const extraCursor = buildFeedCursor(0, seenIds, true, slots);
           const res2 = await api("RecommendTab", [state.tabType, extraCursor]).catch(() => null);
           if (res2 && Array.isArray(res2.items) && res2.items.length) {
             const seenInItems = new Set(items.map(x => x.series && String(x.series.id)));
@@ -954,7 +956,7 @@
           }
         }
         if (!items.length) {
-          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-15), true);
+          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-15), true, 6);
           res = await api("RecommendTab", [state.tabType, fallbackCursor]);
           items = (res && res.items) || [];
           fresh = items.filter(isFreshItem);
