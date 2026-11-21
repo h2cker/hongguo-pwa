@@ -887,9 +887,14 @@
           merged.push(String(id));
         }
       }
-      cursorObj.filter = merged.slice(-60);
+      cursorObj.filter = merged.slice(-80);
       if (randomizeOffset || !cursorObj.offset) {
-        cursorObj.offset = Math.floor(Math.random() * 6) * 6;
+        const lastKey = "hg_last_offset_" + state.tabType;
+        const lastOffset = parseInt(localStorage.getItem(lastKey) || "-1", 10);
+        let nextOffset = Math.floor(Math.random() * 20) * 6;
+        if (nextOffset === lastOffset) nextOffset = (nextOffset + 6) % 120;
+        localStorage.setItem(lastKey, String(nextOffset));
+        cursorObj.offset = nextOffset;
         cursorObj.session = "";
       }
       return JSON.stringify(cursorObj);
@@ -922,6 +927,23 @@
         const reqCursor = buildFeedCursor(state.cursor, seenIds, reset);
         let res = await api("RecommendTab", [state.tabType, reqCursor]);
         let items = (res && res.items) || [];
+        if (reset) {
+          const freshCount = items.filter(x => x.series && !seenSet.has(x.series.id) && x.series.id !== prevSeriesId).length;
+          if (freshCount < 3) {
+            const extraCursor = buildFeedCursor(0, seenIds, true);
+            const res2 = await api("RecommendTab", [state.tabType, extraCursor]).catch(() => null);
+            if (res2 && Array.isArray(res2.items) && res2.items.length) {
+              const seenInItems = new Set(items.map(x => x.series && x.series.id));
+              for (const it of res2.items) {
+                if (it && it.series && !seenInItems.has(it.series.id)) {
+                  seenInItems.add(it.series.id);
+                  items.push(it);
+                }
+              }
+              if (res2.cursor) res.cursor = res2.cursor;
+            }
+          }
+        }
         if (!items.length) {
           const fallbackCursor = buildFeedCursor(0, seenIds.slice(-15), true);
           res = await api("RecommendTab", [state.tabType, fallbackCursor]);
@@ -958,6 +980,7 @@
     function playFeedItem(idx) {
       if (idx < 0 || idx >= state.feed.length) return;
       state.feedIdx = idx;
+      setSwipeMode("series");
       const item = state.feed[idx];
       const s = item.series;
       markFeedSeen(s && s.id);
@@ -1522,6 +1545,10 @@
         if (v !== player) return;
         clearStallWatch();
         nextHint.classList.remove("show");
+        if (state.epIdx + 1 < state.episodes.length && state.swipeMode !== "episode") {
+          setSwipeMode("episode");
+          toast("已自动连播下一集，滑屏切换为「换集」");
+        }
         playEpisode(state.epIdx + 1);
       });
       v.addEventListener("click", () => {
