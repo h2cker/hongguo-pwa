@@ -900,93 +900,104 @@
       return arr;
     }
 
+    let feedLoadPromise = null;
     async function loadFeed(reset = false) {
-      if (state.loadingFeed) return;
+      if (state.loadingFeed && feedLoadPromise) {
+        if (!reset) return feedLoadPromise;
+      }
       state.loadingFeed = true;
       let needBgMore = false;
-      try {
-        const prevSeriesId = state.series && state.series.id;
-        if (reset) {
-          if (prevSeriesId) markFeedSeen(prevSeriesId);
-          state.feed = [];
-          state.feedIdx = 0;
-        }
-        if (reset || state.feed.length === 0) {
-          state.cursor = getSavedFeedCursor(state.tabType);
-        }
-        const seenIds = getSeenFeedIds().map(String);
-        const seenSet = new Set(seenIds);
-        const existingIds = new Set(state.feed.map(x => x.series && String(x.series.id)));
-        const isFreshItem = (x) => {
-          if (!x || !x.series || !x.series.id) return false;
-          const sid = String(x.series.id);
-          return !seenSet.has(sid) && !existingIds.has(sid) && sid !== String(prevSeriesId || "");
-        };
-
-        const reqCursor = buildFeedCursor(state.cursor, seenIds);
-        let res = await api("RecommendTab", [state.tabType, reqCursor]);
-        let items = (res && res.items) || [];
-        let fresh = items.filter(isFreshItem);
-
-        // Chain upstream res.cursor sequentially so each page returns genuinely unseen dramas
-        let nextCursor = (res && res.cursor) || 0;
-        for (let extra = 0; extra < 3 && fresh.length < 4; extra++) {
-          if (!nextCursor) break;
-          const extraCursor = buildFeedCursor(nextCursor, seenIds);
-          const res2 = await api("RecommendTab", [state.tabType, extraCursor]).catch(() => null);
-          if (!res2 || !Array.isArray(res2.items) || !res2.items.length) break;
-          nextCursor = res2.cursor || 0;
-          const seenInItems = new Set(items.map(x => x.series && String(x.series.id)));
-          for (const it of res2.items) {
-            if (it && it.series && !seenInItems.has(String(it.series.id))) {
-              seenInItems.add(String(it.series.id));
-              items.push(it);
-            }
+      const run = (async () => {
+        try {
+          const prevSeriesId = state.series && state.series.id;
+          if (reset) {
+            if (prevSeriesId) markFeedSeen(prevSeriesId);
+            state.feed = [];
+            state.feedIdx = 0;
           }
-          fresh = items.filter(isFreshItem);
-        }
-        if (!items.length) {
-          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-100));
-          res = await api("RecommendTab", [state.tabType, fallbackCursor]);
-          items = (res && res.items) || [];
-          nextCursor = (res && res.cursor) || 0;
-          fresh = items.filter(isFreshItem);
-        }
-        if (!items.length) {
-          res = await api("RecommendTab", [state.tabType, 0]);
-          items = (res && res.items) || [];
-          nextCursor = (res && res.cursor) || 0;
-          fresh = items.filter(isFreshItem);
-        }
-        state.cursor = nextCursor;
-        saveFeedCursor(state.tabType, state.cursor);
+          if (reset || state.feed.length === 0) {
+            state.cursor = getSavedFeedCursor(state.tabType);
+          }
+          const seenIds = getSeenFeedIds().map(String);
+          const seenSet = new Set(seenIds);
+          const existingIds = new Set(state.feed.map(x => x.series && String(x.series.id)));
+          const isFreshItem = (x) => {
+            if (!x || !x.series || !x.series.id) return false;
+            const sid = String(x.series.id);
+            return !seenSet.has(sid) && !existingIds.has(sid) && sid !== String(prevSeriesId || "");
+          };
 
-        // Strictly prefer unseen dramas; only fallback to seenOther if feed would otherwise be completely empty
-        let toAdd = shuffleArray(fresh);
-        if (!toAdd.length && state.feed.length === 0) {
-          toAdd = shuffleArray(items.filter(x => x.series && !existingIds.has(String(x.series.id)) && String(x.series.id) !== String(prevSeriesId || "")));
-        }
-        state.feed.push(...toAdd);
+          const reqCursor = buildFeedCursor(state.cursor, seenIds);
+          let res = await api("RecommendTab", [state.tabType, reqCursor]);
+          let items = (res && res.items) || [];
+          let fresh = items.filter(isFreshItem);
 
-        if (reset && state.feed.length > 0) {
-          playFeedItem(0);
-          needBgMore = state.feed.length < 5;
-        } else if (!reset && state.swipeMode === "series") {
-          preloadNextEpisode();
+          // Chain upstream res.cursor sequentially so each page returns genuinely unseen dramas
+          let nextCursor = (res && res.cursor) || 0;
+          for (let extra = 0; extra < 3 && fresh.length < 4; extra++) {
+            if (!nextCursor) break;
+            const extraCursor = buildFeedCursor(nextCursor, seenIds);
+            const res2 = await api("RecommendTab", [state.tabType, extraCursor]).catch(() => null);
+            if (!res2 || !Array.isArray(res2.items) || !res2.items.length) break;
+            nextCursor = res2.cursor || 0;
+            const seenInItems = new Set(items.map(x => x.series && String(x.series.id)));
+            for (const it of res2.items) {
+              if (it && it.series && !seenInItems.has(String(it.series.id))) {
+                seenInItems.add(String(it.series.id));
+                items.push(it);
+              }
+            }
+            fresh = items.filter(isFreshItem);
+          }
+          if (!items.length) {
+            const fallbackCursor = buildFeedCursor(0, seenIds.slice(-100));
+            res = await api("RecommendTab", [state.tabType, fallbackCursor]);
+            items = (res && res.items) || [];
+            nextCursor = (res && res.cursor) || 0;
+            fresh = items.filter(isFreshItem);
+          }
+          if (!items.length) {
+            res = await api("RecommendTab", [state.tabType, 0]);
+            items = (res && res.items) || [];
+            nextCursor = (res && res.cursor) || 0;
+            fresh = items.filter(isFreshItem);
+          }
+          state.cursor = nextCursor;
+          saveFeedCursor(state.tabType, state.cursor);
+
+          // Strictly prefer unseen dramas; only fallback to seenOther if feed would otherwise be completely empty
+          let toAdd = shuffleArray(fresh);
+          if (!toAdd.length && state.feed.length === 0) {
+            toAdd = shuffleArray(items.filter(x => x.series && !existingIds.has(String(x.series.id)) && String(x.series.id) !== String(prevSeriesId || "")));
+          }
+          state.feed.push(...toAdd);
+
+          if (reset && state.feed.length > 0) {
+            playFeedItem(0);
+            needBgMore = state.feed.length < 5;
+          } else if (!reset && state.swipeMode === "series") {
+            preloadNextEpisode();
+          }
+        } catch (e) {
+          if (!String(e.message).includes("密码")) toast("加载推荐失败: " + e.message);
+        } finally {
+          state.loadingFeed = false;
+          feedLoadPromise = null;
         }
-      } catch (e) {
-        if (!String(e.message).includes("密码")) toast("加载推荐失败: " + e.message);
-      } finally {
-        state.loadingFeed = false;
-      }
-      if (needBgMore) loadFeed(false);
+        if (needBgMore) loadFeed(false);
+      })();
+      feedLoadPromise = run;
+      return run;
     }
 
+    let feedNavSeq = 0;
     async function playFeedItem(idx) {
       if (idx < 0) return;
+      const mySeq = ++feedNavSeq;
       if (idx >= state.feed.length) {
         toast("正在加载更多新剧...");
         await loadFeed(false);
+        if (mySeq !== feedNavSeq) return;
         if (idx >= state.feed.length) {
           toast("暂无更多新剧，可点击上方分类换一批");
           return;
@@ -1280,7 +1291,7 @@
     function parseSeasonMeta(rawTitle, rawSeasonIdx = 0) {
       let title = String(rawTitle || "").trim();
       let season = rawSeasonIdx > 0 ? rawSeasonIdx : 0;
-      const m = title.match(/(?:之)?[\s(（【\[]*(?:第([一二三四五六七八九十\d]+)[季部]|[Ss](?:eason)?\s*(\d+))[\s)）】\]]*$/);
+      const m = title.match(/(?:之)?[\s·:：\-—(（【\[]*(?:第([一二三四五六七八九十\d]+)[季部]|[Ss](?:eason)?\s*(\d+))[\s)）】\]]*$/);
       if (m) {
         const token = m[1] || m[2] || "";
         const parsed = /^\d+$/.test(token) ? parseInt(token, 10) : (CN_NUMS[token] || 0);
