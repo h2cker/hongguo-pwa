@@ -1886,7 +1886,10 @@
         } else {
           if (dy < 0) playFeedItem(state.feedIdx + 1);
           else if (state.feedIdx > 0) playFeedItem(state.feedIdx - 1);
-          else toast("已经是第一部了");
+          else {
+            toast("正在为你刷新新剧...");
+            loadFeed(true);
+          }
         }
       } else if (!moved && !e.target.closest(".top-bar, .right-bar, .bottom-info, .progress-wrap, #posterOverlay, #centerControl, #nextHint")) {
         unlockPlayers();
@@ -1944,7 +1947,7 @@
         state.tabType = parseInt(btn.dataset.tab, 10);
         state.userInteracted = true;
         setSwipeMode("series");
-        if (wasActive) toast("已为你随机换一批");
+        if (wasActive) toast("已为你加载一批新剧");
         loadFeed(true);
       });
     });
