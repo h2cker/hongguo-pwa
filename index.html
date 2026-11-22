@@ -982,8 +982,16 @@
       if (needBgMore) loadFeed(false);
     }
 
-    function playFeedItem(idx) {
-      if (idx < 0 || idx >= state.feed.length) return;
+    async function playFeedItem(idx) {
+      if (idx < 0) return;
+      if (idx >= state.feed.length) {
+        toast("正在加载更多新剧...");
+        await loadFeed(false);
+        if (idx >= state.feed.length) {
+          toast("暂无更多新剧，可点击上方分类换一批");
+          return;
+        }
+      }
       state.feedIdx = idx;
       setSwipeMode("series");
       const item = state.feed[idx];
@@ -1032,13 +1040,22 @@
         const bgSid = state.series.id;
         api("SeriesDetail", [bgSid]).then((detail) => {
           if (seq === openSeq && state.series && state.series.id === bgSid && detail && Array.isArray(detail.episodes) && detail.episodes.length > state.episodes.length) {
+            const curEp = state.episodes[state.epIdx];
+            const curVid = curEp && curEp.videoId;
             state.series = detail;
             state.episodes = detail.episodes;
+            if (curVid) {
+              const realIdx = detail.episodes.findIndex(e => e && e.videoId === curVid);
+              if (realIdx >= 0) state.epIdx = realIdx;
+            }
             if (detailCache.size >= 30) detailCache.delete(detailCache.keys().next().value);
             detailCache.set(bgSid, { data: detail, ts: Date.now() });
-            const curEp = state.episodes[state.epIdx];
-            const num = (curEp && curEp.index) || (state.epIdx + 1);
+            const activeEp = state.episodes[state.epIdx];
+            const num = (activeEp && activeEp.index) || (state.epIdx + 1);
             document.getElementById("epBadge").textContent = `第${num}集 / 共${state.episodes.length}集 · 选集 ▾`;
+            if (document.getElementById("epSheet").classList.contains("open") && typeof renderEpGrid === "function") {
+              renderEpGrid();
+            }
           }
         }).catch(() => {});
       }
