@@ -862,7 +862,7 @@
       } catch (_) {}
     }
 
-    function buildFeedCursor(rawCursor, seenIds, randomizeOffset = false, maxSlots = 40) {
+    function buildFeedCursor(rawCursor, seenIds) {
       let cursorObj = null;
       if (typeof rawCursor === "string" && rawCursor.trim()) {
         try {
@@ -877,28 +877,18 @@
       if (!cursorObj) {
         cursorObj = { cell_id: null, filter: [], offset: 0, phase_cell: true, plan_id: null, session: "" };
       }
-      const baseFilter = Array.isArray(cursorObj.filter) ? cursorObj.filter : [];
-      const extraIds = Array.isArray(seenIds) ? seenIds : [];
-      const curId = state.series && state.series.id;
+      const baseFilter = Array.isArray(cursorObj.filter) ? cursorObj.filter.map(String) : [];
+      const extraIds = Array.isArray(seenIds) ? seenIds.map(String) : [];
+      const curId = state.series && state.series.id ? String(state.series.id) : "";
       const merged = [];
       const added = new Set();
-      for (const id of extraIds.concat(baseFilter, curId ? [curId] : [])) {
+      for (const id of baseFilter.concat(extraIds, curId ? [curId] : [])) {
         if (id && !added.has(id)) {
           added.add(id);
-          merged.push(String(id));
+          merged.push(id);
         }
       }
-      cursorObj.filter = merged.slice(-100);
-      if (randomizeOffset || !cursorObj.offset) {
-        const lastKey = "hg_last_offset_" + state.tabType;
-        const lastOffset = parseInt(localStorage.getItem(lastKey) || "-1", 10);
-        const slots = Math.max(1, maxSlots);
-        let nextOffset = Math.floor(Math.random() * slots) * 6;
-        if (slots > 1 && nextOffset === lastOffset) nextOffset = (nextOffset + 6) % (slots * 6);
-        localStorage.setItem(lastKey, String(nextOffset));
-        cursorObj.offset = nextOffset;
-        cursorObj.session = "";
-      }
+      cursorObj.filter = merged.slice(-200);
       return JSON.stringify(cursorObj);
     }
 
@@ -933,40 +923,42 @@
           return !seenSet.has(sid) && !existingIds.has(sid) && sid !== String(prevSeriesId || "");
         };
 
-        const reqCursor = buildFeedCursor(state.cursor, seenIds, reset);
+        const reqCursor = buildFeedCursor(state.cursor, seenIds);
         let res = await api("RecommendTab", [state.tabType, reqCursor]);
         let items = (res && res.items) || [];
         let fresh = items.filter(isFreshItem);
 
-        // If fewer than 4 genuinely unseen dramas, fetch up to 2 extra random pages (narrow offset if empty)
-        for (let extra = 0; extra < 2 && fresh.length < 4; extra++) {
-          const slots = items.length === 0 ? 8 : 40;
-          const extraCursor = buildFeedCursor(0, seenIds, true, slots);
+        // Chain upstream res.cursor sequentially so each page returns genuinely unseen dramas
+        let nextCursor = (res && res.cursor) || 0;
+        for (let extra = 0; extra < 3 && fresh.length < 4; extra++) {
+          if (!nextCursor) break;
+          const extraCursor = buildFeedCursor(nextCursor, seenIds);
           const res2 = await api("RecommendTab", [state.tabType, extraCursor]).catch(() => null);
-          if (res2 && Array.isArray(res2.items) && res2.items.length) {
-            const seenInItems = new Set(items.map(x => x.series && String(x.series.id)));
-            for (const it of res2.items) {
-              if (it && it.series && !seenInItems.has(String(it.series.id))) {
-                seenInItems.add(String(it.series.id));
-                items.push(it);
-              }
+          if (!res2 || !Array.isArray(res2.items) || !res2.items.length) break;
+          nextCursor = res2.cursor || 0;
+          const seenInItems = new Set(items.map(x => x.series && String(x.series.id)));
+          for (const it of res2.items) {
+            if (it && it.series && !seenInItems.has(String(it.series.id))) {
+              seenInItems.add(String(it.series.id));
+              items.push(it);
             }
-            if (res2.cursor) res = { ...res, cursor: res2.cursor };
-            fresh = items.filter(isFreshItem);
           }
+          fresh = items.filter(isFreshItem);
         }
         if (!items.length) {
-          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-15), true, 6);
+          const fallbackCursor = buildFeedCursor(0, seenIds.slice(-100));
           res = await api("RecommendTab", [state.tabType, fallbackCursor]);
           items = (res && res.items) || [];
+          nextCursor = (res && res.cursor) || 0;
           fresh = items.filter(isFreshItem);
         }
         if (!items.length) {
           res = await api("RecommendTab", [state.tabType, 0]);
           items = (res && res.items) || [];
+          nextCursor = (res && res.cursor) || 0;
           fresh = items.filter(isFreshItem);
         }
-        state.cursor = (res && res.cursor) || 0;
+        state.cursor = nextCursor;
         saveFeedCursor(state.tabType, state.cursor);
 
         // Strictly prefer unseen dramas; only fallback to seenOther if feed would otherwise be completely empty
