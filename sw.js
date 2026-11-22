@@ -1,4 +1,4 @@
-const CACHE = "hg-ios-v21";
+const CACHE = "hg-ios-v22";
 const SHELL = ["/manifest.json"];
 
 self.addEventListener("install", (e) => {
