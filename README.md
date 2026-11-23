@@ -81,9 +81,9 @@ iPhone Safari / PWA
 ```
 
 ### 上游架构与二进制说明
-- `shortdramacat` 服务使用上游项目 [kiroswu/hongguo-shortdramabox](https://github.com/kiroswu/hongguo-shortdramabox) 发布的 Linux 独立二进制（`v0.9.0`）：
-  - `x86_64 / amd64`：`ShortDramaCat-v0.9.0-x86_64-linux`
-  - `aarch64 / arm64`（含 Apple Silicon Mac Docker、树莓派、ARM NAS）：`ShortDramaCat-v0.9.0-aarch64-linux`
+- `shortdramacat` 服务使用上游项目 [kiroswu/hongguo-shortdramabox](https://github.com/kiroswu/hongguo-shortdramabox) 发布的 Linux 独立二进制（`v0.9.2`）：
+  - `x86_64 / amd64`：`ShortDramaCat-v0.9.2-x86_64-linux`
+  - `aarch64 / arm64`（含 Apple Silicon Mac Docker、树莓派、ARM NAS）：`ShortDramaCat-v0.9.2-aarch64-linux`
 - 本仓库不直接打包上游二进制文件，`start.sh` / `start.bat` 会在首次运行时自动按架构下载并准备就绪。
 
 ---

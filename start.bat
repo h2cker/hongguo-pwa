@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
 if not exist "ShortDramaCat" (
   echo [1/3] 正在自动下载必要组件 ShortDramaCat...
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$urls = @('https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.0/ShortDramaCat-v0.9.0-x86_64-linux','https://ghfast.top/https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.0/ShortDramaCat-v0.9.0-x86_64-linux','https://gh-proxy.com/https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.0/ShortDramaCat-v0.9.0-x86_64-linux');" ^
+    "$urls = @('https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.2/ShortDramaCat-v0.9.2-x86_64-linux','https://ghfast.top/https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.2/ShortDramaCat-v0.9.2-x86_64-linux','https://gh-proxy.com/https://github.com/kiroswu/hongguo-shortdramabox/releases/download/v0.9.2/ShortDramaCat-v0.9.2-x86_64-linux');" ^
     "$ok = $false;" ^
     "foreach ($u in $urls) { try { Write-Host ('      尝试: ' + $u); Invoke-WebRequest -Uri $u -OutFile 'ShortDramaCat.tmp' -TimeoutSec 45 -UseBasicParsing; if ((Get-Item 'ShortDramaCat.tmp').Length -gt 0) { Move-Item -Force 'ShortDramaCat.tmp' 'ShortDramaCat'; $ok = $true; break } } catch {} }" ^
     "if (-not $ok) { if (Test-Path 'ShortDramaCat.tmp') { Remove-Item -Force 'ShortDramaCat.tmp' }; exit 1 }"

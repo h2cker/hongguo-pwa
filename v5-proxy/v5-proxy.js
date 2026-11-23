@@ -684,28 +684,32 @@ function forwardToShortDramaCat(req, res, bodyBuf, cacheMethod = '') {
   proxyReq.end(bodyBuf);
 }
 
+let v5CooldownUntil = 0;
 async function resolvePlayInfoUnified(seriesId, videoId, preferredQuality = '') {
   const cached = getPlayCache(videoId, preferredQuality);
   if (cached) return cached;
   if (playInfoInFlight.has(videoId)) return playInfoInFlight.get(videoId);
 
   const p = (async () => {
-    try {
-      const v5Data = await resolvePlayInfoV5(videoId, preferredQuality);
-      const entry = { data: v5Data, source: 'v5', ts: Date.now() };
-      setPlayCache(videoId, entry);
-      return entry;
-    } catch (v5Err) {
-      const v5Msg = String((v5Err && v5Err.message) || v5Err || '');
-      if (v5Msg.includes('bytevc2')) throw v5Err;
+    if (Date.now() >= v5CooldownUntil) {
       try {
-        const upstreamData = await callUpstreamPlayInfo(seriesId, videoId);
-        const entry = { data: upstreamData, source: 'sdc-fallback', ts: Date.now() };
+        const v5Data = await resolvePlayInfoV5(videoId, preferredQuality);
+        const entry = { data: v5Data, source: 'v5', ts: Date.now() };
         setPlayCache(videoId, entry);
         return entry;
-      } catch (_) {
-        throw new Error('播放通道繁忙，正在自动恢复，请稍候重试');
+      } catch (v5Err) {
+        const v5Msg = String((v5Err && v5Err.message) || v5Err || '');
+        if (v5Msg.includes('bytevc2')) throw v5Err;
+        v5CooldownUntil = Date.now() + 60 * 1000;
       }
+    }
+    try {
+      const upstreamData = await callUpstreamPlayInfo(seriesId, videoId);
+      const entry = { data: upstreamData, source: 'sdc-fallback', ts: Date.now() };
+      setPlayCache(videoId, entry);
+      return entry;
+    } catch (_) {
+      throw new Error('播放通道繁忙，正在自动恢复，请稍候重试');
     }
   })().finally(() => {
     playInfoInFlight.delete(videoId);

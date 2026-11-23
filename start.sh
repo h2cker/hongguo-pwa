@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-UPSTREAM_VER="v0.9.0"
+UPSTREAM_VER="v0.9.2"
 UPSTREAM_REPO="kiroswu/hongguo-shortdramabox/releases/download/${UPSTREAM_VER}"
 
 if ! command -v docker >/dev/null 2>&1; then
