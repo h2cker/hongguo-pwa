@@ -708,8 +708,20 @@ async function resolvePlayInfoUnified(seriesId, videoId, preferredQuality = '') 
       const entry = { data: upstreamData, source: 'sdc-fallback', ts: Date.now() };
       setPlayCache(videoId, entry);
       return entry;
-    } catch (_) {
-      throw new Error('播放通道繁忙，正在自动恢复，请稍候重试');
+    } catch (err1) {
+      const m1 = String((err1 && err1.message) || err1 || '');
+      if (m1.includes('bytevc2')) throw err1;
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        const upstreamData = await callUpstreamPlayInfo(seriesId, videoId);
+        const entry = { data: upstreamData, source: 'sdc-fallback', ts: Date.now() };
+        setPlayCache(videoId, entry);
+        return entry;
+      } catch (err2) {
+        const m2 = String((err2 && err2.message) || err2 || '');
+        if (m2.includes('bytevc2')) throw err2;
+        throw new Error('播放通道繁忙，正在自动恢复，请稍候重试');
+      }
     }
   })().finally(() => {
     playInfoInFlight.delete(videoId);
