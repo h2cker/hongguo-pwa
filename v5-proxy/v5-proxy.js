@@ -685,6 +685,8 @@ function forwardToShortDramaCat(req, res, bodyBuf, cacheMethod = '') {
 }
 
 let v5CooldownUntil = 0;
+let v5FailStreak = 0;
+const V5_BACKOFF_MS = [60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000];
 async function resolvePlayInfoUnified(seriesId, videoId, preferredQuality = '') {
   const cached = getPlayCache(videoId, preferredQuality);
   if (cached) return cached;
@@ -694,13 +696,17 @@ async function resolvePlayInfoUnified(seriesId, videoId, preferredQuality = '') 
     if (Date.now() >= v5CooldownUntil) {
       try {
         const v5Data = await resolvePlayInfoV5(videoId, preferredQuality);
+        v5FailStreak = 0;
+        v5CooldownUntil = 0;
         const entry = { data: v5Data, source: 'v5', ts: Date.now() };
         setPlayCache(videoId, entry);
         return entry;
       } catch (v5Err) {
         const v5Msg = String((v5Err && v5Err.message) || v5Err || '');
         if (v5Msg.includes('bytevc2')) throw v5Err;
-        v5CooldownUntil = Date.now() + 60 * 1000;
+        const idx = Math.min(v5FailStreak, V5_BACKOFF_MS.length - 1);
+        v5CooldownUntil = Date.now() + V5_BACKOFF_MS[idx];
+        v5FailStreak++;
       }
     }
     try {

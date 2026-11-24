@@ -1190,7 +1190,7 @@
         }
       }
       const nextFeed = state.feed[state.feedIdx + 1];
-      if (state.swipeMode === "series" && nextFeed && nextFeed.series && nextFeed.episode && nextFeed.episode.videoId) {
+      if (!nextEp && state.swipeMode === "series" && nextFeed && nextFeed.series && nextFeed.episode && nextFeed.episode.videoId) {
         const fk = `${nextFeed.series.id}:${nextFeed.episode.videoId}:${state.quality}`;
         if (!warmInfoKeys.has(fk)) {
           warmInfoKeys.add(fk);
