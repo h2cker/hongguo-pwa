@@ -1248,9 +1248,22 @@
           return;
         }
         state.preloadState.url = chosen.url;
-        // Server-side getPlayInfo already pre-caches & decrypts the MP4 on disk in ~0.5s.
-        // Do NOT fetch() the full MP4 into a client Blob here: on bandwidth-limited VPS links,
-        // full-file pre-fetching saturates outbound bandwidth and stalls active/swiped playback.
+        // Pre-download next episode into a local Blob URL so AVPlayer switches in RAM with zero network pause
+        preloadAbort = new AbortController();
+        const res = await fetch(chosen.url, { signal: preloadAbort.signal });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const len = parseInt(res.headers.get("content-length") || "0", 10);
+        const maxBlobBytes = isSameSeries ? (35 * 1024 * 1024) : (12 * 1024 * 1024);
+        if (!len || len > maxBlobBytes) {
+          skippedPreloadKeys.add(key);
+          clearPreload();
+          return;
+        }
+        const blob = await res.blob();
+        if (state.preloadState.key !== key) return;
+        const bUrl = URL.createObjectURL(blob);
+        storeBlobCache(key, bUrl);
+        state.preloadState.blobUrl = bUrl;
         state.preloadState.ready = true;
       } catch (err) {
         if (err && err.name === "AbortError") return;
