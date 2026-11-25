@@ -787,6 +787,8 @@ const server = http.createServer(async (req, res) => {
       const filePath = await ensureMediaFile(token, entry);
       const stat = fs.statSync(filePath);
       const total = stat.size;
+      const etag = `"${total.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+      const lastModified = stat.mtime.toUTCString();
       const range = req.headers.range;
       if (range) {
         const m = /^bytes=(\d*)-(\d*)$/.exec(range);
@@ -806,6 +808,8 @@ const server = http.createServer(async (req, res) => {
           'Content-Type': 'video/mp4',
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'private, max-age=3600',
+          'ETag': etag,
+          'Last-Modified': lastModified,
           'X-Content-Type-Options': 'nosniff',
           'Content-Range': `bytes ${start}-${end}/${total}`,
           'Content-Length': end - start + 1,
@@ -820,6 +824,8 @@ const server = http.createServer(async (req, res) => {
           'Content-Type': 'video/mp4',
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'private, max-age=3600',
+          'ETag': etag,
+          'Last-Modified': lastModified,
           'X-Content-Type-Options': 'nosniff',
           'Content-Length': total,
         });

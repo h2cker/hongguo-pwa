@@ -256,7 +256,7 @@ public class V5Signer {
     }
 
     static final Object LOCK = new Object();
-    static volatile DeviceSlot activeSlot = new DeviceSlot(DEFAULT_DEVICE, 0, true);
+    static volatile DeviceSlot activeSlot = null;
     static long lastRegisterAt = 0;
 
     static void sleepGap(long lastAt, long minGapMs) throws InterruptedException {
@@ -291,7 +291,13 @@ public class V5Signer {
         DeviceSlot slot;
         synchronized (LOCK) {
             if (activeSlot == null || (!activeSlot.isDefault && activeSlot.uses >= 20)) {
-                activeSlot = new DeviceSlot(DEFAULT_DEVICE, 0, true);
+                sleepGap(lastRegisterAt, 2000);
+                lastRegisterAt = System.currentTimeMillis();
+                try {
+                    activeSlot = new DeviceSlot(register(), 0, false);
+                } catch (Exception e) {
+                    activeSlot = new DeviceSlot(DEFAULT_DEVICE, 0, true);
+                }
             }
             slot = activeSlot;
         }

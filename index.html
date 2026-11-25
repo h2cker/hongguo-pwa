@@ -1622,7 +1622,12 @@
         const nextEp = state.episodes[state.epIdx + 1];
         if (v.currentTime >= 2.0 || (v.duration > 0 && v.currentTime > v.duration * 0.2)) {
           warmNextPlayInfo();
-          preloadNextEpisode();
+          // Only pre-download next episode into RAM after current video is fully buffered,
+          // so preload fetch never steals bandwidth from active playback on mobile/VPS.
+          const bufEnd = v.buffered.length > 0 ? v.buffered.end(v.buffered.length - 1) : 0;
+          if (bufEnd >= v.duration - 1.5) {
+            preloadNextEpisode();
+          }
         }
         const rem = Math.ceil(v.duration - v.currentTime);
         if (v.duration > 8 && rem > 0 && rem <= 5 && !v.paused) {
