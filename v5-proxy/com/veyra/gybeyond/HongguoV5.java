@@ -89,11 +89,14 @@ final class HongguoV5 {
     /** 进程 nonce：官方客户端每次冷启动随机一次，写进 medusa 明文。 */
     private static final String PROCESS_NONCE;
     private static final long PROCESS_STARTED = System.currentTimeMillis();
+    private static final int PROCESS_LAUNCH = 110 + RANDOM.nextInt(21);
+    private static final int PROCESS_PID = 10001 + RANDOM.nextInt(2000);
 
     static {
         byte[] raw = new byte[18];
         RANDOM.nextBytes(raw);
-        PROCESS_NONCE = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        String tok = "A" + Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
+        PROCESS_NONCE = tok.substring(0, 25);
     }
 
     private HongguoV5() { }
@@ -516,6 +519,12 @@ final class HongguoV5 {
             return this;
         }
 
+        Proto fixed32Zero(int tag) {
+            out.writeBytes(varint(((long) tag << 3) | 5));
+            out.write(0); out.write(0); out.write(0); out.write(0);
+            return this;
+        }
+
         byte[] done() { return out.toByteArray(); }
     }
 
@@ -598,25 +607,34 @@ final class HongguoV5 {
         byte[] bodyHash = body == null ? new byte[16] : md5(body);
         byte[] digest = hashF13(queryHash, bodyHash, ts);
 
-        byte[] flags = new byte[8];
+        byte[] flags = hex("4480000000000000");
         String version = identity.get("version_name");
         String deviceId = identity.get("device_id");
         String deviceType = identity.get("device_type");
+        String deviceBrand = identity.getOrDefault("device_brand", "HONOR");
         String osVersion = identity.get("os_version");
         String channel = identity.get("channel");
+        long nowMs = System.currentTimeMillis();
 
-        byte[] deviceInfo = new Proto()
+        Proto devProto = new Proto()
                 .sint(1, 1).sint(2, 2).text(3, "8662").text(4, deviceId)
                 .text(5, processNonce).text(6, "!noperm!")
-                .text(12, "Asia/Shanghai,8").text(13, "zh_CN")
-                .text(22, osVersion).sint(25, processStarted)
-                .text(30, deviceType).text(31, "HONOR")
-                .text(32, deviceType).text(34, "HONOR")
+                .sint(7, -888888).sint(8, -888888).sint(9, 3).sint(10, -888888)
+                .text(11, "!notset!").text(12, "Asia/Shanghai,8").text(13, "zh_CN").sint(14, 4);
+        for (int i = 16; i <= 21; i++) devProto.fixed32Zero(i);
+        byte[] deviceInfo = devProto
+                .text(22, osVersion).sint(23, 41).sint(24, 36)
+                .sint(25, processStarted).sint(26, processStarted).sint(27, processStarted).sint(28, nowMs)
+                .sint(29, -1).text(30, deviceType).text(31, deviceBrand)
+                .text(32, deviceType).text(33, deviceType).text(34, deviceBrand)
+                .text(35, deviceBrand).text(36, deviceBrand).sint(38, 31)
                 .done();
 
+        byte[] sub = new Proto().sint(1, ts).sint(2, -2).sint(4, 200).done();
         byte[] env = new Proto()
-                .text(6, "v04.10.03.04-bugfix").text(8, channel)
-                .bytes(12, deviceInfo).text(14, version)
+                .sint(1, PROCESS_LAUNCH).sint(2, 247235599).sint(3, 247235596).sint(5, 7)
+                .text(6, "v04.10.03.04-bugfix").sint(7, PROCESS_PID).text(8, channel)
+                .bytes(12, deviceInfo).bytes(13, sub).text(14, version)
                 .done();
 
         byte[] message = new Proto()
@@ -625,11 +643,11 @@ final class HongguoV5 {
                 .text(8, "v04.10.03-ml-android").sint(9, 0x040a0300L)
                 .bytes(10, flags).sint(12, ts).bytes(13, digest)
                 .bytes(14, slice(queryHash, 0, 6))
-                .bytes(15, new Proto().sint(1, 1).sint(2, 1).sint(3, 1).sint(5, 1).done())
-                .sint(17, ts).text(20, "none").sint(21, 377)
+                .bytes(15, new Proto().sint(1, 305).sint(2, 4).sint(3, 694367).sint(5, 1621072674).done())
+                .text(16, processNonce).sint(17, ts).text(20, "none").sint(21, 312)
                 .bytes(23, env)
-                .text(24, "{\"cmr\":16777216,\"cmr2\":16777216,\"un_h\":11,\"vpn\":0,\"kd\":0,"
-                        + "\"dyn\":\"\",\"do\":1,\"tk\":true}")
+                .text(24, "{\"cmr\":16777216,\"cmr2\":16777216,\"un_h\":11,\"vpn\":0,"
+                        + "\"kd\":0,\"dyn\":\"\",\"do\":1,\"tk\":true}")
                 .done();
 
         byte[] keyHash = sm3(concat(concat(SIGN_KEY, le32(nonce)), SIGN_KEY));
@@ -681,7 +699,7 @@ final class HongguoV5 {
     static String encode(String value) {
         try {
             return java.net.URLEncoder.encode(value, "UTF-8")
-                    .replace("+", "%20").replace("%7E", "~");
+                    .replace("+", "%20").replace("%7E", "~").replace("%2A", "*");
         } catch (Exception error) {
             throw new IllegalStateException(error);
         }

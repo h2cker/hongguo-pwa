@@ -26,10 +26,12 @@ public class V5Signer {
     static final String[] DEFAULT_DEVICE = {
         "1624456208323876",
         "1624456208327972",
-        "91d56f7e-c027-4ce9-9a3c-229d59a13c3b"
+        "91d56f7e-c027-4ce9-9a3c-229d59a13c3b",
+        ""
     };
     static final String REGISTER = "https://log5-applog-lf.fqnovel.com/service/2/device_register/?tt_data=a&cronet_version=8d40f833_2026-03-03&ttnet_version=4.2.243.31-douyin&use_store_region_cookie=1";
-    static final String REGISTER_UA = "com.phoenix.read/74332 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)";
+    static final String REGISTER_UA = "com.phoenix.read/72232 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3)";
+    static final String TAB_UA = "com.phoenix.read/73932 (Linux; U; Android 16; zh_CN; 25053RT47C; Build/BP2A.250605.031.A3; Cronet/TTNetVersion:04657795 2026-01-23 QuicVersion:c67e9834 2025-09-08)";
     static final String PLAYBACK_UA = "com.phoenix.read/73932 (Linux; U; Android 12; zh_CN_#Hans; PGT-AN10; Build/V417IR;tt-ok/3.12.13.20)";
     static final byte[] KDF_SALT = HongguoV5.hex("4dd4c2e6b83162090e52b3c7a6733ba41cb2462b829ab58a196b39db57177524f49baf7f08e8d68d26a72e37c1a95a2f1f05a51892aef2949732b62a38aadd58");
     static final SecureRandom RANDOM = new SecureRandom();
@@ -63,9 +65,9 @@ public class V5Signer {
         String cdid = UUID.randomUUID().toString();
         byte[] openudid = new byte[8]; RANDOM.nextBytes(openudid);
         String headerJson = "{"
-            + "\"display_name\":\"红果免费短剧\",\"update_version_code\":74332,\"manifest_version_code\":74332,"
-            + "\"app_version_minor\":\"7.4.3.32\",\"aid\":8662,\"channel\":\"update_64\",\"package\":\"com.phoenix.read\","
-            + "\"app_version\":\"7.4.3.32\",\"version_code\":74332,\"sdk_version\":\"3.7.0-rc.34-fanqie-xiaoshuo\","
+            + "\"display_name\":\"红果免费短剧\",\"update_version_code\":73932,\"manifest_version_code\":73932,"
+            + "\"app_version_minor\":\"7.3.9.32\",\"aid\":8662,\"channel\":\"update_64\",\"package\":\"com.phoenix.read\","
+            + "\"app_version\":\"7.3.9.32\",\"version_code\":73932,\"sdk_version\":\"3.7.0-rc.34-fanqie-xiaoshuo\","
             + "\"sdk_target_version\":29,\"git_hash\":\"3a88f4e\",\"os\":\"Android\",\"os_version\":\"16\",\"os_api\":36,"
             + "\"device_model\":\"25053RT47C\",\"device_brand\":\"Redmi\",\"device_manufacturer\":\"Redmi\","
             + "\"cpu_abi\":\"arm64-v8a\",\"release_build\":\"b5e187f\",\"density_dpi\":520,\"display_density\":\"mdpi\","
@@ -110,7 +112,21 @@ public class V5Signer {
         String iid = extractStr(text, "install_id_str");
         if (iid.isEmpty()) iid = extractNum(text, "install_id");
         if (devId.isEmpty() || iid.isEmpty()) throw new IOException("register failed: " + text);
-        return new String[]{ devId, iid, cdid };
+        String egdi = extractStr(text, "klink_egdi");
+        // Best-effort device activation (app_alert_check) required by upstream
+        try {
+            String activateUrl = "https://log5-applog-lf.fqnovel.com/service/2/app_alert_check/?aid=8662&app_name=novelread&channel=update_64"
+                + "&device_id=" + devId + "&iid=" + iid
+                + "&device_platform=android&os=android&version_code=73932&version_name=7.3.9.32&_rticket=" + System.currentTimeMillis();
+            HttpRequest actReq = HttpRequest.newBuilder(URI.create(activateUrl))
+                .timeout(Duration.ofSeconds(3))
+                .header("User-Agent", REGISTER_UA)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+            HTTP.send(actReq, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception ignored) {}
+        return new String[]{ devId, iid, cdid, egdi };
     }
 
     static String extractStr(String j, String k) {
@@ -171,18 +187,38 @@ public class V5Signer {
     static String fetchVideoTabModel(String vid, String[] dev, String tabUrl) throws Exception {
         long now = System.currentTimeMillis();
         LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        values.put("device_platform", "android");
+        values.put("os", "android");
+        values.put("ssmix", "a");
+        values.put("cdid", dev[2]);
+        values.put("channel", "vivo_8662_64");
         values.put("aid", "8662");
         values.put("app_name", "novelread");
         values.put("version_code", "74332");
         values.put("version_name", "7.4.3.32");
-        values.put("channel", "vivo_8662_64");
-        values.put("device_platform", "android");
-        values.put("device_type", "PGT-AN10");
-        values.put("os_version", "12");
+        values.put("manifest_version_code", "74332");
         values.put("update_version_code", "74332");
+        values.put("resolution", "1920*1080");
+        values.put("dpi", "280");
+        values.put("device_type", "PGT-AN10");
+        values.put("device_brand", "HONOR");
+        values.put("language", "zh");
+        values.put("os_api", "31");
+        values.put("os_version", "12");
+        values.put("ac", "wifi");
+        values.put("host_abi", "arm64-v8a");
+        values.put("dragon_device_type", "phone");
+        values.put("pv_player", "74332");
+        values.put("compliance_status", "0");
+        values.put("need_personal_recommend", "1");
+        values.put("player_so_load", "1");
+        values.put("is_android_pad_screen", "0");
+        values.put("rom_version", "V417IR+release-keys");
         values.put("iid", dev[1]);
-        values.put("cdid", dev[2]);
         values.put("device_id", dev[0]);
+        if (dev.length > 3 && dev[3] != null && !dev[3].isEmpty()) {
+            values.put("klink_egdi", dev[3]);
+        }
         values.put("video_id", vid);
         values.put("video_id_type", "0");
         values.put("device_level", "1");
@@ -192,14 +228,12 @@ public class V5Signer {
         values.put("video_platform", "1024");
         values.put("source", "0");
         values.put("from_video_id", "");
-        values.put("_rticket", String.valueOf(now));
 
-        HongguoV5.Signed signed = HongguoV5.signPlayback(tabUrl, values, null, now);
+        HongguoV5.Signed signed = HongguoV5.signPlayback(tabUrl, values, new byte[0], now);
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(signed.url))
             .timeout(Duration.ofSeconds(10))
-            .header("User-Agent", PLAYBACK_UA)
-            .header("Accept", "application/json")
-            .header("Cookie", "store-region=cn-bj; store-region-src=did; install_id=" + dev[1]);
+            .header("User-Agent", TAB_UA)
+            .header("Accept", "application/json");
         for (Map.Entry<String, String> e : signed.headers.entrySet()) {
             b.header(e.getKey(), e.getValue());
         }
