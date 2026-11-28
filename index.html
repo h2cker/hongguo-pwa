@@ -38,6 +38,7 @@
     }
     #player {
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000;
+      touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
     }
 
     /* Poster & Big Play */
@@ -1819,7 +1820,13 @@
         moved = false;
         return;
       }
-      if (e.target.closest(".top-bar, .right-bar, .bottom-info, .progress-wrap, .sheet-mask, #posterOverlay, #centerControl, #nextHint, #unlockBtn")) return;
+      if (e.touches.length !== 1) {
+        resetTouchState();
+        return;
+      }
+      if (e.target !== player && e.target !== stage) return;
+      // WebKit checks for the loupe on touchstart, before our hold timer fires.
+      if (e.cancelable) e.preventDefault();
       touchStartY = e.touches[0].clientY;
       touchStartX = e.touches[0].clientX;
       moved = false;
@@ -1836,7 +1843,7 @@
           seekHud.classList.add("show");
         }
       }, 350);
-    }, { passive: true });
+    }, { passive: false });
     stage.addEventListener("touchmove", (e) => {
       if (!touchStartY) return;
       const dx = e.touches[0].clientX - touchStartX;
